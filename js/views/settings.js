@@ -13,7 +13,7 @@ const conn = { busy: false, error: null, choice: null, checking: false };
 const MISSING = {
   secret: 'APP_SECRET (het app-wachtwoord)',
   storage: 'opslag (Upstash Redis koppelen in Vercel → Storage)',
-  metron: 'METRON_TOKEN (je Metron-token)',
+  metron: 'METRON_TOKEN (of METRON_USERNAME + METRON_PASSWORD)',
 };
 
 async function connect(server, secret, rerender) {

@@ -21,7 +21,7 @@ De app draait op [Vercel](https://vercel.com) (gratis): daar staan de app, de ko
 4. **Instellingen**: *Settings → Environment Variables*, voeg toe:
    | Naam | Waarde |
    | --- | --- |
-   | `METRON_TOKEN` | je Metron-token |
+   | `METRON_TOKEN` | je Metron-token (geen token-knop op Metron? Gebruik dan `METRON_USERNAME` en `METRON_PASSWORD`) |
    | `APP_SECRET` | een wachtwoord dat je zelf kiest (lang en willekeurig) |
    | `CRON_SECRET` | nog een willekeurige tekst (beveiligt de dagelijkse controle) |
 5. **Opnieuw uitrollen**: *Deployments* → bij de bovenste ⋯ → *Redeploy*.

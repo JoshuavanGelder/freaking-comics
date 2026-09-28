@@ -113,3 +113,21 @@ test('cron zonder geheim mag niet', async () => {
   const r = await cron.GET(req('/api/cron'));
   assert.equal(r.status, 401);
 });
+
+test('Metron werkt ook met gebruikersnaam en wachtwoord', async () => {
+  const token = process.env.METRON_TOKEN;
+  delete process.env.METRON_TOKEN;
+  process.env.METRON_USERNAME = 'lezer';
+  process.env.METRON_PASSWORD = 'wachtwoord';
+  try {
+    const r = await body(await search.GET(req('/api/metron/search?q=saga', { headers: H })));
+    assert.equal(r.results[0].name, 'Saga TPB (2012)');
+    process.env.METRON_PASSWORD = 'fout';
+    const bad = await search.GET(req('/api/metron/search?q=saga', { headers: H }));
+    assert.equal(bad.status, 502);
+  } finally {
+    process.env.METRON_TOKEN = token;
+    delete process.env.METRON_USERNAME;
+    delete process.env.METRON_PASSWORD;
+  }
+});

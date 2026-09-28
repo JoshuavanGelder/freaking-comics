@@ -6,7 +6,16 @@ const BASE = (process.env.METRON_BASE_URL || 'https://metron.cloud/api').replace
 const UA = 'FreakingComics/0.2 (+https://github.com/JoshuavanGelder/freaking-comics)';
 
 export function metronConfigured() {
-  return !!process.env.METRON_TOKEN;
+  return !!authHeader();
+}
+
+/** Voorkeur: API-token. Anders gebruikersnaam + wachtwoord (Basic Auth, wordt door Metron uitgefaseerd). */
+function authHeader() {
+  if (process.env.METRON_TOKEN) return `Bearer ${process.env.METRON_TOKEN.trim()}`;
+  const user = process.env.METRON_USERNAME;
+  const pass = process.env.METRON_PASSWORD;
+  if (user && pass) return `Basic ${Buffer.from(`${user}:${pass}`).toString('base64')}`;
+  return null;
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -24,14 +33,14 @@ async function waitForBudget(deadline) {
 }
 
 export async function metronGet(path, params = {}, { deadline } = {}) {
-  const token = process.env.METRON_TOKEN;
-  if (!token) throw new HttpError(503, 'METRON_TOKEN is nog niet ingesteld op de server.');
+  const auth = authHeader();
+  if (!auth) throw new HttpError(503, 'Metron is nog niet ingesteld: zet METRON_TOKEN (of METRON_USERNAME en METRON_PASSWORD) in Vercel.');
   const url = new URL(`${BASE}/${path.replace(/^\//, '')}`);
   for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== null && v !== '') url.searchParams.set(k, v);
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
     await waitForBudget(deadline);
-    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', 'User-Agent': UA } });
+    const res = await fetch(url, { headers: { Authorization: auth, Accept: 'application/json', 'User-Agent': UA } });
     const rem = res.headers.get('x-ratelimit-burst-remaining');
     if (rem !== null) {
       budget.remaining = Number(rem);
@@ -45,7 +54,7 @@ export async function metronGet(path, params = {}, { deadline } = {}) {
       }
       throw new HttpError(429, 'Metron-limiet bereikt, probeer het zo nog eens.');
     }
-    if (res.status === 401 || res.status === 403) throw new HttpError(502, 'Metron weigert het token. Kijk METRON_TOKEN na.');
+    if (res.status === 401 || res.status === 403) throw new HttpError(502, 'Metron weigert de inloggegevens. Kijk METRON_TOKEN (of gebruikersnaam/wachtwoord) na.');
     if (res.status === 404) throw new HttpError(404, 'Niet gevonden op Metron.');
     if (!res.ok) throw new HttpError(502, `Metron gaf een fout (${res.status}).`);
     return res.json();

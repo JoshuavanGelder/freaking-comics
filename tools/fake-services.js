@@ -68,7 +68,8 @@ function respond(body, status = 200) {
 function metron(url, init) {
   fake.calls.push(url.pathname + url.search);
   const auth = new Headers(init?.headers).get('authorization');
-  if (auth !== 'Bearer test-token') return respond({ detail: 'Invalid token.' }, 401);
+  const basic = `Basic ${Buffer.from('lezer:wachtwoord').toString('base64')}`;
+  if (auth !== 'Bearer test-token' && auth !== basic) return respond({ detail: 'Invalid token.' }, 401);
   const path = url.pathname.replace(/^\/api\//, '');
   const p = url.searchParams;
   let m;
