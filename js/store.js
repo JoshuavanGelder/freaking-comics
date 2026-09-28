@@ -1,5 +1,5 @@
 // Opslag: houdt de state bij, bewaart hem in localStorage en seint de UI bij wijzigingen.
-import { normalizeState, emptyState } from './model.js';
+import { normalizeState, emptyState, adoptState } from './model.js';
 import { seedState } from './seed.js';
 
 const KEY = 'freaking-comics:v1';
@@ -18,8 +18,8 @@ function save() {
   }
 }
 
-function notify() {
-  listeners.forEach((fn) => fn());
+function notify(source = 'local') {
+  listeners.forEach((fn) => fn(source));
 }
 
 export function load() {
@@ -71,10 +71,18 @@ export function canUndo() {
 
 export function undo() {
   if (!undoSnapshot) return;
-  state = undoSnapshot;
+  state = adoptState(state, undoSnapshot);
   undoSnapshot = null;
   save();
   notify();
+}
+
+/** Nieuwe state van de server: geen ongedaan-maken, en de sync hoeft hem niet terug te sturen. */
+export function setFromSync(next) {
+  state = normalizeState(next);
+  undoSnapshot = null;
+  save();
+  notify('sync');
 }
 
 export function exportJson() {
@@ -83,16 +91,13 @@ export function exportJson() {
 
 export function importJson(text) {
   const parsed = normalizeState(JSON.parse(text));
-  undoSnapshot = state;
-  state = parsed;
-  save();
-  notify();
+  replaceAll(parsed);
   return parsed;
 }
 
 export function replaceAll(next) {
   undoSnapshot = state;
-  state = next;
+  state = adoptState(state, next);
   save();
   notify();
 }

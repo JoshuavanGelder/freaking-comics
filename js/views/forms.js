@@ -3,6 +3,7 @@ import * as M from '../model.js';
 import { getState, dispatch } from '../store.js';
 import { h, backButton, topbar, toast } from '../ui.js';
 import * as A from '../actions.js';
+import { isConnected } from '../api.js';
 
 function field(label, input, hint) {
   return h('div', { class: 'field' }, h('label', { for: input.id }, label), input, hint ? h('p', { class: 'hint' }, hint) : null);
@@ -82,6 +83,9 @@ export function serieFormView({ id } = {}) {
         }
       },
     },
+    !existing && isConnected()
+      ? h('a', { class: 'btn btn--yellow btn--block', href: '#/zoeken' }, 'Zoek op Metron (vult alles automatisch in)')
+      : null,
     err,
     field('Titel', title),
     h('div', { class: 'field-row' }, field('Uitgever', publisher), field('Jaren', years)),

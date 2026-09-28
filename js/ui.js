@@ -92,7 +92,23 @@ export function cover(volume, series, size = 'md', { ghost = false } = {}) {
     light ? 'dots cover--yellow' : 'dots-light',
     ghost ? 'cover--ghost' : '',
   ].join(' ');
-  return h('div', { class: cls, style: { backgroundColor: color }, 'aria-hidden': 'true' }, label);
+  const box = h('div', { class: cls, style: { backgroundColor: color }, 'aria-hidden': 'true' }, label);
+  if (volume?.cover) {
+    const img = h('img', { class: `cover__img${ghost ? ' cover__img--faded' : ''}`, src: volume.cover, alt: '', loading: 'lazy', decoding: 'async', referrerpolicy: 'no-referrer' });
+    img.addEventListener('error', () => img.remove());
+    box.classList.add('cover--photo');
+    box.appendChild(img);
+  }
+  return box;
+}
+
+export function formatDate(iso, opts = { day: 'numeric', month: 'long', year: 'numeric' }) {
+  if (!iso) return '';
+  try {
+    return new Date(`${iso.slice(0, 10)}T12:00:00`).toLocaleDateString('nl-NL', opts);
+  } catch {
+    return iso.slice(0, 10);
+  }
 }
 
 export function progress(done, total, text) {

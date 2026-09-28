@@ -4,6 +4,7 @@ import { getState } from '../store.js';
 import { h, icon, cover, bubble, section } from '../ui.js';
 import * as A from '../actions.js';
 import { shelfItem } from './home.js';
+import { isConnected } from '../api.js';
 
 const PHASE_ORDER = ['active', 'new', 'paused', 'done'];
 
@@ -40,7 +41,7 @@ export function kastView() {
         h(
           'div',
           { class: 'row' },
-          h('a', { class: 'btn btn--yellow', href: '#/serie/nieuw', style: { flex: '1' } }, icon('plus', { size: 18, width: 3 }), 'Serie'),
+          h('a', { class: 'btn btn--yellow', href: isConnected() ? '#/zoeken' : '#/serie/nieuw', style: { flex: '1' } }, icon('plus', { size: 18, width: 3 }), 'Serie'),
           h('a', { class: 'btn', href: '#/volume/nieuw', style: { flex: '1' } }, icon('plus', { size: 18, width: 3 }), 'Volume'),
         ),
         groups.length

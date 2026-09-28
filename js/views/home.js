@@ -2,7 +2,8 @@
 // daarna wat er op de stapel ligt en wat op pauze staat.
 import * as M from '../model.js';
 import { getState } from '../store.js';
-import { h, icon, cover, progress, section, bubble } from '../ui.js';
+import { h, icon, cover, progress, section, bubble, formatDate } from '../ui.js';
+import { isConnected } from '../api.js';
 import * as A from '../actions.js';
 
 export function continueCard(state, series) {
@@ -33,6 +34,8 @@ export function continueCard(state, series) {
       icon('check', { size: 18, width: 3 }),
       `${label} gelezen`,
     );
+  } else if (next && !M.isReleased(next)) {
+    action = h('div', { class: 'btn btn--ghost', role: 'note' }, `Verschijnt ${formatDate(next.storeDate, { day: 'numeric', month: 'short', year: 'numeric' })}`);
   } else if (next) {
     action = h(
       'button',
@@ -98,7 +101,7 @@ export function homeView() {
     'header',
     { class: 'topbar' },
     h('h1', { class: 'logo' }, 'FREAKING COMICS'),
-    h('a', { class: 'icon-btn', href: '#/toevoegen', 'aria-label': 'Toevoegen' }, icon('plus', { width: 3 })),
+    h('a', { class: 'icon-btn', href: isConnected() ? '#/zoeken' : '#/toevoegen', 'aria-label': 'Toevoegen' }, icon('plus', { width: 3 })),
   );
 
   if (!state.series.length) {
@@ -118,6 +121,24 @@ export function homeView() {
   }
 
   const cont = M.continueReading(state);
+  const fresh = M.newVolumes(state).filter((v) => M.isReleased(v));
+  const soon = M.upcoming(state).slice(0, 8);
+  const seriesOf = (v) => M.getSeries(state, v.seriesId);
+  const strip = (vols, tag) =>
+    h(
+      'div',
+      { class: 'new-strip' },
+      vols.map((v) =>
+        h(
+          'a',
+          { class: 'new-card', href: `#/volume/${v.id}` },
+          cover(v, seriesOf(v), 'md'),
+          h('span', { class: `tag ${tag === 'new' ? 'tag--new' : 'tag--soon'}` }, tag === 'new' ? 'NIEUW' : formatDate(v.storeDate, { day: 'numeric', month: 'short' }).toUpperCase()),
+          h('div', { class: 'kicker' }, seriesOf(v)?.title || ''),
+          h('div', { class: 'new-card__title' }, M.volumeShortName(v)),
+        ),
+      ),
+    );
   const stack = M.seriesByPhase(state, 'new');
   const paused = M.seriesByPhase(state, 'paused');
 
@@ -129,6 +150,9 @@ export function homeView() {
       h(
         'main',
         { class: 'main', id: 'main' },
+        fresh.length
+          ? section('Nieuw verschenen', `${fresh.length}`, bubble(fresh.length === 1 ? 'Er is een nieuw deel uit van een serie die je leest!' : `Er zijn ${fresh.length} nieuwe delen uit van series die je leest!`), strip(fresh, 'new'))
+          : null,
         section(
           'Verder lezen',
           cont.length ? `${cont.length} bezig` : null,
@@ -136,6 +160,7 @@ export function homeView() {
             ? h('div', { class: 'stack', style: { gap: '16px' } }, cont.map((s) => continueCard(state, s)))
             : h('p', { class: 'hint' }, 'Je bent nergens mee bezig. Kies iets van de stapel of uit je kast.'),
         ),
+        soon.length ? section('Binnenkort', `${soon.length}`, strip(soon, 'soon')) : null,
         stack.length
           ? section('Op de stapel', `${stack.length}`, h('div', { class: 'stack' }, stack.map((s) => shelfItem(state, s))))
           : null,

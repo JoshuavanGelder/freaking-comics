@@ -1,5 +1,8 @@
 // Opstarten, routes en tekenen.
-import { load, subscribe } from './store.js';
+import { load, subscribe, getState } from './store.js';
+import { newVolumes, isReleased } from './model.js';
+import { startSync, onSyncStatus } from './sync.js';
+import { metronView } from './views/metron.js';
 import { h, nav } from './ui.js';
 import { homeView } from './views/home.js';
 import { kastView, wishlistView } from './views/lists.js';
@@ -11,7 +14,8 @@ const routes = [
   [/^\/$/, () => homeView()],
   [/^\/kast$/, () => kastView()],
   [/^\/verlanglijst$/, () => wishlistView()],
-  [/^\/instellingen$/, () => settingsView()],
+  [/^\/instellingen$/, (_m, ctx) => settingsView({}, ctx)],
+  [/^\/zoeken$/, (_m, ctx, q) => metronView({}, ctx, q)],
   [/^\/toevoegen$/, (_m, ctx, q) => volumeFormView({}, ctx, q)],
   [/^\/serie\/nieuw$/, () => serieFormView()],
   [/^\/serie\/([\w-]+)\/bewerken$/, (m) => serieFormView({ id: m[1] })],
@@ -64,8 +68,25 @@ function onRoute() {
   if (view?.focus) view.focus.focus({ preventScroll: true });
 }
 
+/** Aantal nieuwe delen als stipje op het app-icoon (waar de telefoon dat ondersteunt). */
+function updateBadge() {
+  const n = newVolumes(getState()).filter((v) => isReleased(v)).length;
+  try {
+    if (n && navigator.setAppBadge) navigator.setAppBadge(n).catch(() => {});
+    else if (navigator.clearAppBadge) navigator.clearAppBadge().catch(() => {});
+  } catch { /* niet ondersteund */ }
+}
+
 load();
-subscribe(() => render({ keepFocus: true }));
+subscribe(() => {
+  render({ keepFocus: true });
+  updateBadge();
+});
+onSyncStatus(() => {
+  if (parseHash().path === '/instellingen') render({ keepFocus: true });
+});
+updateBadge();
+startSync();
 window.addEventListener('hashchange', onRoute);
 onRoute();
 

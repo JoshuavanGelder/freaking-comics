@@ -1,6 +1,6 @@
 // Service worker: zorgt dat de app ook zonder internet opent.
 // Netwerk eerst (zodat je altijd de nieuwste versie krijgt), cache als terugval.
-const CACHE = 'freaking-comics-v1';
+const CACHE = 'freaking-comics-v2';
 const SHELL = [
   './',
   './index.html',
@@ -12,6 +12,9 @@ const SHELL = [
   './js/seed.js',
   './js/ui.js',
   './js/actions.js',
+  './js/api.js',
+  './js/sync.js',
+  './js/views/metron.js',
   './js/views/home.js',
   './js/views/lists.js',
   './js/views/detail.js',
@@ -41,7 +44,9 @@ self.addEventListener('fetch', (event) => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   const isFont = url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com';
-  if (url.origin !== self.location.origin && !isFont) return;
+  const isCover = url.hostname === 'static.metron.cloud';
+  if (url.origin === self.location.origin && url.pathname.startsWith('/api/')) return; // server nooit uit de cache
+  if (url.origin !== self.location.origin && !isFont && !isCover) return;
 
   event.respondWith(
     fetch(req)

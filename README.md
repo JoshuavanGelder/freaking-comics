@@ -1,57 +1,65 @@
 # Freaking Comics
 
-Houd bij welke comics je gelezen hebt. Per serie een bladwijzer, altijd zichtbaar welk deel het volgende is, en een pop-art jasje.
+Houd bij welke comics je gelezen hebt. Per serie een bladwijzer, altijd zichtbaar welk deel het volgende is, en een pop-art jasje. Gegevens en covers komen automatisch van [Metron](https://metron.cloud), je kast synct tussen je apparaten, en elke ochtend kijkt de server of er nieuwe delen zijn.
 
-**App:** https://joshuavangelder.github.io/freaking-comics/
+## Wat de app kan
 
-## Op je telefoon zetten
+- **Serie zoeken op Metron** en in één keer binnenhalen: alle delen, titels, covers, verschijningsdatums en welke issues erin zitten.
+- **Bestaande series en losse boeken koppelen** aan Metron. Je leesstatus, bezit en gelezen issues blijven altijd van jou.
+- **Bladwijzer per serie**: "Verder lezen" op Home, laatst gelezen bovenaan, met één tik op *Uit!* naar het volgende deel.
+- **Nieuwe delen automatisch**: elke ochtend om ±07:00 controleert de server je gekoppelde series. Nieuwe delen verschijnen op Home onder *Nieuw verschenen*; aangekondigde delen onder *Binnenkort*. Het aantal nieuwe delen staat ook als getal op het app-icoon (waar je telefoon dat ondersteunt).
+- **Sync tussen apparaten**: automatisch bij openen, na elke wijziging en elke 5 minuten. Werkt ook offline; wijzigingen gaan mee zodra je weer internet hebt.
+- Leesstatus en kaststatus, issues afvinken, pauze, tussendoor-delen, verlanglijst, ongedaan maken, back-up.
 
-1. Open de link hierboven op je telefoon.
-2. **iPhone (Safari):** tik op Deel (vierkantje met pijl) → *Zet op beginscherm*.
-   **Android (Chrome):** tik op ⋮ → *App installeren* of *Toevoegen aan startscherm*.
-3. Freaking Comics staat nu als los icoon tussen je apps, opent schermvullend en werkt ook zonder internet.
+## Installeren (eenmalig, ± 10 minuten)
 
-Je gegevens staan op je telefoon zelf. Maak af en toe een back-up via **Mijn kast → ⚙ → Back-up downloaden**.
+De app draait op [Vercel](https://vercel.com) (gratis): daar staan de app, de koppeling met Metron, de opslag en de dagelijkse controle.
 
-## Wat versie 0.1 kan
+1. **Metron-token**: maak een account op [metron.cloud](https://metron.cloud/accounts/signup/) en maak een token aan onder [API Tokens](https://metron.cloud/accounts/tokens/).
+2. **Project importeren**: log in op Vercel met GitHub → *Add New… → Project* → kies `freaking-comics` → *Deploy*. Laat alle instellingen staan.
+3. **Opslag koppelen**: in het project → *Storage* → *Create Database* → **Upstash for Redis** (gratis plan) → *Connect* aan dit project.
+4. **Instellingen**: *Settings → Environment Variables*, voeg toe:
+   | Naam | Waarde |
+   | --- | --- |
+   | `METRON_TOKEN` | je Metron-token |
+   | `APP_SECRET` | een wachtwoord dat je zelf kiest (lang en willekeurig) |
+   | `CRON_SECRET` | nog een willekeurige tekst (beveiligt de dagelijkse controle) |
+5. **Opnieuw uitrollen**: *Deployments* → bij de bovenste ⋯ → *Redeploy*.
+6. **Op je telefoon**: open `https://<jouw-project>.vercel.app`, zet hem op je beginscherm (Deel → *Zet op beginscherm*) en ga naar **Mijn kast → ⚙ → Koppelen** met je `APP_SECRET`.
 
-- **Series en volumes toevoegen**, met deelnummer, plek in de serie, formaat en de issues die erin zitten (`#1–8, Annual #1`, of per regel een andere serie voor boeken als *Divided We Fall*).
-- **Statussen**: leesstatus (nog niet / bezig / gelezen) en kast (niet / in bezit / verlanglijst). Bij boeken met issues vink je per issue af; de status van het boek volgt vanzelf.
-- **Bladwijzer per serie**: "Verder lezen" op Home toont alle series waar je mee bezig bent, laatst gelezen bovenaan. Eén tik op *Uit!* en de bladwijzer schuift door naar het volgende deel.
-- **Pauze**: zet een serie op pauze; zodra je er weer in leest, gaat hij vanzelf verder.
-- **Tussendoor-delen** (zijverhalen, tie-ins) tellen niet mee voor "volgende deel", tenzij je ze aan het lezen bent.
-- **Verlanglijst**, met een knop *Gekocht*.
-- **Ongedaan maken** na elke leesactie, en back-up downloaden/terugzetten.
-
-Bij de eerste start staat je leesstapel uit het plan er al in: The Flash (New 52) met Vol. 1–5 gelezen, en Ultimate Comics met *Divided We Fall, United We Stand* (18 issues) en Ultimate Comics Iron Man.
+Elke push naar `main` zet Vercel automatisch online. De GitHub Pages-versie blijft ook bestaan; daar vul je bij Koppelen het Vercel-adres in als serveradres.
 
 ## Techniek
 
-Gewone HTML, CSS en JavaScript (ES-modules), zonder build-stap en zonder afhankelijkheden. Gegevens in `localStorage`, een service worker voor offline gebruik, en een web-app-manifest voor het icoon.
+Gewone HTML, CSS en JavaScript-modules, zonder build-stap en zonder afhankelijkheden.
 
 ```
-index.html              ingang
-css/app.css             pop-art stijl
-js/model.js             datamodel en alle logica (puur, getest)
-js/store.js             opslag, ongedaan maken, back-up
-js/seed.js              startdata uit het plan
-js/views/*.js           schermen: Home, Mijn kast, Serie, Volume, formulieren, instellingen
-sw.js                   offline
-tests/model.test.js     tests
+index.html, css/, icons/     de app (PWA: installeerbaar, werkt offline)
+js/model.js                  datamodel, bladwijzer-logica, sync-samenvoegen, Metron-omzetting (puur, getest)
+js/store.js, js/sync.js      opslag op het apparaat, automatische sync
+js/api.js                    praat met de server
+js/views/                    schermen
+api/                         serverfuncties (Vercel): status, sync, cron, metron/{search,series,issues}
+api/_lib/                    Metron-client (limieten + cache), opslag (Upstash REST), controle op nieuwe delen
+vercel.json                  dagelijkse taak en instellingen
+tools/dev-server.js          lokaal draaien, met nep-Metron en nep-opslag
+tests/                       node --test
 ```
 
-Lokaal draaien en testen:
+**Samenvoegen bij sync**: per serie en per volume wint de laatst gewijzigde versie. Verwijderen wordt onthouden, zodat een ander apparaat het niet terugzet. Metron is leidend voor titels, covers, datums en de issue-lijst; leesstatus, bezit, notities en vinkjes zijn altijd van jou.
+
+**Metron-limieten** (20 verzoeken per minuut, 5000 per dag): de server leest de limiet-headers, wacht zo nodig, en bewaart issue-details een week in de cache.
+
+Lokaal:
 
 ```bash
-npm start      # http://localhost:5173
-npm test       # node --test, geen installatie nodig
+npm start      # http://localhost:5173, met nep-Metron en nep-opslag (wachtwoord: geheim)
+npm test       # alle tests
+REAL=1 METRON_TOKEN=… APP_SECRET=… KV_REST_API_URL=… KV_REST_API_TOKEN=… npm start   # tegen de echte diensten
 ```
-
-Elke push naar `main` draait de tests en zet de app op GitHub Pages.
 
 ## Volgende stappen
 
-1. ~~Eerste werkende versie~~ ✔
-2. Metron koppelen voor gegevens en covers (Comic Vine als aanvulling).
-3. Leesroutes ("Alleen hoofdverhaal", "+ Toch lezen") en aanraders.
-4. Extra's: releasekalender, statistieken, eigen foto's als cover.
+- Leesroutes ("Alleen hoofdverhaal", "+ Toch lezen") en aanraders.
+- Pushmeldingen bij nieuwe delen.
+- Statistieken en eigen foto's als cover.

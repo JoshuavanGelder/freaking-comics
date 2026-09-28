@@ -1,8 +1,9 @@
 // Serie-pagina (bladwijzer, voortgang, alle delen) en volume-pagina (status, issues, volgende deel).
 import * as M from '../model.js';
-import { getState } from '../store.js';
-import { h, icon, cover, section, bubble, backButton, topbar, progress } from '../ui.js';
+import { getState, dispatch } from '../store.js';
+import { h, icon, cover, section, bubble, backButton, topbar, progress, formatDate } from '../ui.js';
 import * as A from '../actions.js';
+import { isConnected } from '../api.js';
 
 const FILTERS = [
   ['all', 'Alles', () => true],
@@ -38,7 +39,10 @@ function volumePill(v, isNext) {
 function volumeRow(v, series, isNext = false) {
   const missing = !isNext && v.ownership !== 'owned' && v.readStatus === 'unread';
   const cls = ['vol-row', v.readStatus === 'reading' ? 'vol-row--reading' : '', isNext ? 'vol-row--next' : '', missing ? 'vol-row--missing' : '', v.isSide ? 'vol-row--side' : ''].join(' ');
-  const sub = M.formatIssues(v.issues, series.title) || M.FORMATS[v.format];
+  const released = M.isReleased(v);
+  const sub = !released
+    ? `Verschijnt ${formatDate(v.storeDate)}`
+    : M.formatIssues(v.issues, series.title) || M.FORMATS[v.format];
   return h(
     'a',
     { class: cls, href: `#/volume/${v.id}` },
@@ -46,6 +50,7 @@ function volumeRow(v, series, isNext = false) {
     h(
       'div',
       { class: 'vol-row__body' },
+      v.isNew ? h('span', { class: 'tag tag--new' }, 'NIEUW') : null,
       v.isSide ? h('span', { class: 'tag' }, 'TUSSENDOOR') : null,
       h('div', { class: 'vol-row__title' }, M.volumeName(v)),
       h('div', { class: 'sub' }, sub),
@@ -132,6 +137,7 @@ export function serieView({ id }, ctx) {
             ? h('button', { class: 'btn', type: 'button', 'data-key': 'pause', style: { flex: '1' }, onClick: () => A.setPaused(id, false) }, icon('play', { size: 16 }), 'Hervatten')
             : h('button', { class: 'btn', type: 'button', 'data-key': 'pause', style: { flex: '1' }, onClick: () => A.setPaused(id, true) }, icon('pause', { size: 18 }), 'Pauze'),
         ),
+        metronBox(series),
         vols.length
           ? section(
               'Alle delen',
@@ -203,7 +209,9 @@ export function volumeView({ id }) {
   const prog = M.volumeProgress(v);
   const groups = M.groupIssues(v.issues);
   const badge = [series.publisher, series.line].filter(Boolean).join(' · ').toUpperCase();
-  const facts = [M.FORMATS[v.format], v.isSide ? 'Zijverhaal' : '', v.readAt && v.readStatus === 'read' ? `Uit op ${formatDate(v.readAt)}` : '']
+  if (v.isNew) queueMicrotask(() => dispatch((s) => M.markSeen(s, id)));
+  const dateFact = v.storeDate ? (M.isReleased(v) ? `Verschenen ${formatDate(v.storeDate)}` : `Verschijnt ${formatDate(v.storeDate)}`) : '';
+  const facts = [M.FORMATS[v.format], v.isSide ? 'Zijverhaal' : '', dateFact, v.readAt && v.readStatus === 'read' ? `Uit op ${formatDate(v.readAt.slice(0, 10))}` : '']
     .filter(Boolean)
     .join(' · ');
 
@@ -215,7 +223,9 @@ export function volumeView({ id }) {
       h(
         'section',
         { class: 'vol-head' },
-        h('div', { class: 'vol-head__side' }, cover(v, series, 'lg'), h('div', { class: 'sub', style: { textAlign: 'center' } }, 'Covers volgen via Metron')),
+        h('div', { class: 'vol-head__side' }, cover(v, series, 'lg'), v.metronId
+          ? null
+          : h('a', { class: 'btn btn--ghost', style: { fontSize: '12px', padding: '0 8px' }, href: isConnected() ? `#/zoeken?volume=${id}` : '#/instellingen' }, 'Koppel aan Metron')),
         h(
           'div',
           { class: 'vol-head__info' },
@@ -306,10 +316,22 @@ function shortSeriesName(name, context) {
   return name;
 }
 
-function formatDate(iso) {
-  try {
-    return new Date(iso).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' });
-  } catch {
-    return iso.slice(0, 10);
+function metronBox(series) {
+  if (!series.metron) {
+    return h(
+      'a',
+      { class: 'btn btn--ghost btn--block', href: isConnected() ? `#/zoeken?serie=${series.id}` : '#/instellingen' },
+      'Koppel aan Metron: covers, issues en nieuwe delen automatisch',
+    );
   }
+  return h(
+    'div',
+    { class: 'next-box', style: { borderStyle: 'dashed' } },
+    h('div', { class: 'kicker' }, 'Gekoppeld aan Metron'),
+    h('div', { class: 'sub' }, series.metron.name),
+    h('p', { class: 'hint' }, 'Nieuwe delen verschijnen hier vanzelf; elke ochtend wordt gecontroleerd.'),
+    isConnected()
+      ? h('a', { class: 'btn', href: `#/zoeken?serie=${series.id}&bijwerken=1` }, 'Nu bijwerken')
+      : null,
+  );
 }
