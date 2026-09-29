@@ -228,3 +228,63 @@ export async function listVolumeIssues(id, { fresh = false } = {}) {
   }
   return cached(key, 6 * 3600, load);
 }
+
+// ---------------------------------------------------------------- aanraders koppelen
+
+function norm(s) {
+  return String(s || '')
+    .toLowerCase()
+    .replace(/&amp;|&/g, ' and ')
+    .replace(/\b(the|a|an|vol|volume)\b/g, ' ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+/** Hoe goed een Comic Vine-reeks past bij een aanrader (hoger is beter). Voorkeur voor verzamelde edities. */
+export function matchScore(item, v) {
+  const a = norm(item.series);
+  const b = norm(v.name);
+  if (!a || !b) return 0;
+  let score = 0;
+  if (a === b) score += 5;
+  else if (b.startsWith(a) || a.startsWith(b)) score += 3;
+  const wa = new Set(a.split(' '));
+  const wb = b.split(' ');
+  const overlap = wb.filter((w) => wa.has(w)).length / Math.max(wa.size, wb.length);
+  score += overlap * 2;
+  const pub = norm(v.publisher?.name || v.publisher);
+  if (item.publisher && pub && (pub.includes(norm(item.publisher)) || norm(item.publisher).includes(pub))) score += 1;
+  const start = Number(v.start_year ?? v.year);
+  if (item.year && start) {
+    const diff = start - item.year;
+    if (diff >= 0 && diff <= 2) score += 2;
+    else if (diff === -1) score += 1;
+    else if (Math.abs(diff) > 5) score -= 2;
+  }
+  const count = Number(v.count_of_issues ?? v.issueCount);
+  if (count && count <= 25) score += 1.5;
+  else if (count > 60) score -= 1;
+  return score;
+}
+
+/** Zoekt de Comic Vine-reeks bij een aanrader: id, naam, jaar en cover. Null als niets goed genoeg past. */
+export async function findRecommendation(item) {
+  const q = item.series;
+  const results = await cached(`fc:cv:rec:${q.toLowerCase()}`, 7 * 86400, async () => {
+    const d = await cvGet('search/', { query: q, resources: 'volume', field_list: VOLUME_FIELDS, limit: 10 });
+    return (d.results || []).map((v) => ({
+      id: v.id,
+      name: v.name || '',
+      start_year: Number(v.start_year) || null,
+      publisher: v.publisher?.name || '',
+      count_of_issues: v.count_of_issues ?? null,
+      image: v.image?.medium_url || v.image?.small_url || v.image?.super_url || null,
+    }));
+  });
+  let best = null;
+  for (const v of results) {
+    const s = matchScore(item, v);
+    if (s >= 4 && (!best || s > best.score)) best = { ...v, score: s };
+  }
+  return best;
+}

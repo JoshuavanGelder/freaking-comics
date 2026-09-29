@@ -44,6 +44,7 @@ export async function setJson(key, value, ttlSeconds) {
 export const KEYS = {
   state: 'fc:state',
   checks: 'fc:release-checks',
+  recs: 'fc:aanraders',
   metronIssue: (id) => `fc:metron:issue:${id}`,
   metronSeriesItems: (id) => `fc:metron:series-items:${id}`,
 };

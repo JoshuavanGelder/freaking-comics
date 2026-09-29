@@ -5,7 +5,7 @@ import { h, backButton, topbar, toast, section, bubble, formatDate } from '../ui
 import { api, isConnected, getConnection, saveConnection, disconnect } from '../api.js';
 import { syncNow, syncStatus, fetchRemote, setEpoch } from '../sync.js';
 
-export const APP_VERSION = '0.7.0';
+export const APP_VERSION = '0.8.0';
 
 // Schermstatus van het koppel-formulier.
 const conn = { busy: false, error: null, choice: null, checking: false };
@@ -15,6 +15,7 @@ const MISSING = {
   storage: 'opslag (Upstash Redis koppelen in Vercel → Storage)',
   metron: 'METRON_TOKEN (of METRON_USERNAME + METRON_PASSWORD)',
   comicvine: 'COMICVINE_API_KEY (Comic Vine-sleutel)',
+  ai: 'ANTHROPIC_API_KEY (voor aanraders)',
 };
 
 async function connect(server, secret, rerender) {
@@ -230,7 +231,7 @@ export function settingsView(_params, ctx) {
             'Alles wissen',
           ),
         ),
-        h('p', { class: 'hint', style: { textAlign: 'center' } }, `Freaking Comics ${APP_VERSION} · gegevens en covers via Metron (metron.cloud) en Comic Vine (comicvine.gamespot.com).`),
+        h('p', { class: 'hint', style: { textAlign: 'center' } }, `Freaking Comics ${APP_VERSION} · gegevens en covers via Metron (metron.cloud) en Comic Vine (comicvine.gamespot.com); aanraders door Claude.`),
       ),
     ],
   };

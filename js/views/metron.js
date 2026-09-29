@@ -543,7 +543,9 @@ export function reeksView({ source, id }, ctx, query) {
       });
   }
 
-  const back = targetParam ? `#/zoeken?serie=${targetParam}${extra ? '&extra=1' : ''}` : '#/zoeken';
+  const back = query.get('van') === 'aanraders'
+    ? '#/aanraders'
+    : targetParam ? `#/zoeken?serie=${targetParam}${extra ? '&extra=1' : ''}` : '#/zoeken';
   const header = topbar(backButton(back, 'Terug naar zoeken'), M.SOURCE_LABELS[source]);
   if (previewUi.error) {
     return { title: 'Reeks · Freaking Comics', nav: 'kast', body: [header, h('main', { class: 'main', id: 'main' }, h('div', { class: 'error-box', role: 'alert' }, previewUi.error))] };

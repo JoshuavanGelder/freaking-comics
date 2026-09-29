@@ -616,7 +616,7 @@ button { cursor: pointer; }
   margin: 0 auto;
   height: var(--nav-h);
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   padding: 6px 8px;
 }
 
@@ -755,3 +755,23 @@ button { cursor: pointer; }
   display: flex; align-items: flex-start; gap: 12px;
   padding: 10px 12px; border-radius: 14px; border: var(--border); background: var(--white);
 }
+
+/* aanraders */
+
+.rec { display: flex; flex-direction: column; gap: 12px; padding: 14px; }
+.rec__head { display: flex; gap: 12px; align-items: flex-start; text-decoration: none; color: var(--ink); }
+.rec__head:hover { color: var(--ink); }
+.rec__body { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1; }
+.rec__title { font-weight: 800; font-size: 16px; line-height: 1.25; }
+.rec .bubble { margin: 0 0 10px; font-size: 14px; }
+.rec__because { font-size: 12px; font-weight: 700; color: var(--muted, #555); margin-top: -2px; }
+.rec__actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.rec__actions .btn { flex: 1 1 auto; }
+.tag--kind { background: var(--yellow); color: var(--ink); border: 2px solid var(--ink); font-size: 11px; letter-spacing: 1px; padding: 2px 7px; align-self: flex-start; }
+.tag--kind.is-vervolg { background: var(--red); color: var(--white); }
+.tag--kind.is-zelfde-maker { background: var(--blue, #1f5fd1); color: var(--white); }
+.tag--top { background: var(--yellow); color: var(--ink); border: 2px solid var(--ink); }
+.rating { display: flex; gap: 8px; }
+.rating .btn { flex: 1; }
+.rating .btn[aria-pressed='true'].is-top { background: var(--yellow); }
+.rating .btn[aria-pressed='true'].is-niks { background: var(--ink); color: var(--white); }

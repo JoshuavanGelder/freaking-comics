@@ -10,9 +10,11 @@ import { serieView, volumeView } from './views/detail.js';
 import { serieFormView, volumeFormView } from './views/forms.js';
 import { settingsView } from './views/settings.js';
 import { routeView } from './views/route.js';
+import { aanradersView } from './views/aanraders.js';
 
 const routes = [
-  [/^\/$/, () => homeView()],
+  [/^\/$/, (_m, ctx) => homeView(ctx)],
+  [/^\/aanraders$/, (_m, ctx) => aanradersView(ctx)],
   [/^\/kast$/, () => kastView()],
   [/^\/verlanglijst$/, () => wishlistView()],
   [/^\/instellingen$/, (_m, ctx) => settingsView({}, ctx)],

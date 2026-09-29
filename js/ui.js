@@ -55,6 +55,9 @@ const ICONS = {
   play: ['M7 4l13 8-13 8z'],
   check: ['M5 12l5 5L20 7'],
   close: ['M6 6l12 12', 'M18 6L6 18'],
+  star: ['M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z'],
+  up: ['M7 11v9H4v-9z', 'M7 11l4-7a2 2 0 0 1 3 2l-1 4h5a2 2 0 0 1 2 2.3l-1.2 6A2 2 0 0 1 16.8 20H7'],
+  down: ['M7 13V4H4v9z', 'M7 13l4 7a2 2 0 0 0 3-2l-1-4h5a2 2 0 0 0 2-2.3l-1.2-6A2 2 0 0 0 16.8 4H7'],
   route: ['M6 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4z', 'M18 9a2 2 0 1 0 0-4 2 2 0 0 0 0 4z', 'M6 15V9a4 4 0 0 1 4-4h6', 'M18 9v6a4 4 0 0 1-4 4H8'],
 };
 
@@ -177,6 +180,7 @@ export function nav(active) {
       { class: 'nav__inner' },
       item('#/', 'home', 'home', 'Home'),
       item('#/kast', 'kast', 'shelf', 'Mijn kast'),
+      item('#/aanraders', 'recs', 'star', 'Aanraders'),
       item('#/verlanglijst', 'wish', 'bookmark', 'Verlanglijst'),
     ),
   );

@@ -12,6 +12,7 @@ const cron = await import('../api/cron.js');
 const reset = await import('../api/reset.js');
 const cvSearch = await import('../api/comicvine/search.js');
 const cvSeries = await import('../api/comicvine/series.js');
+const aanraders = await import('../api/aanraders.js');
 const M = await import('../js/model.js');
 const { seedState } = await import('./fixtures/seed.js');
 
@@ -22,7 +23,7 @@ const body = async (res) => ({ status: res.status, ...(await res.json()) });
 test('status laat zien wat is ingesteld', async () => {
   const r = await body(await status.GET(req('/api/status', { headers: H })));
   assert.equal(r.authorized, true);
-  assert.deepEqual(r.configured, { secret: true, storage: true, metron: true, comicvine: true, cron: true });
+  assert.deepEqual(r.configured, { secret: true, storage: true, metron: true, comicvine: true, cron: true, ai: true });
   const bad = await body(await status.GET(req('/api/status', { headers: { 'x-app-secret': 'fout' } })));
   assert.equal(bad.authorized, false);
 });
@@ -230,4 +231,62 @@ test('leesroute: nummers per serie en Metron-leeslijsten', async () => {
   assert.equal(items.items[3].type, 'TIE_IN');
   assert.equal(M.kindFromListType('Event', 'TIE_IN'), 'side');
   assert.equal(M.kindFromListType('Event', 'CORE'), 'event');
+});
+
+test('aanraders: Claude leest de kast, Comic Vine levert cover, wegklikken wordt onthouden', async () => {
+  fake.store.clear();
+  let state = seedState();
+  const flash = state.series.find((s) => s.title === 'The Flash');
+  const v1 = M.volumesOf(state, flash.id)[0];
+  state = M.setRating(state, v1.id, 'top');
+  await sync.POST(req('/api/sync', { method: 'POST', headers: H, body: JSON.stringify({ state }) }));
+
+  const before = await body(await aanraders.GET(req('/api/aanraders', { headers: H })));
+  assert.equal(before.configured.ai, true);
+  assert.equal(before.items.length, 0);
+  assert.equal(before.stale, true);
+
+  const r = await body(await aanraders.POST(req('/api/aanraders', { method: 'POST', headers: H, body: JSON.stringify({ refresh: true }) })));
+  assert.equal(r.status, 200);
+  // De kast ging mee in de vraag aan Claude, met de Top-waardering
+  const prompt = fake.lastPrompt.messages[0].content;
+  assert.match(prompt, /The Flash/);
+  assert.match(prompt, /vond ik TOP/);
+  // Hunger en Saga gevonden op Comic Vine (met cover), de verzonnen strip niet; die komt achteraan
+  const hunger = r.items.find((i) => i.series === 'Hunger');
+  assert.equal(hunger.cv.id, 5555);
+  assert.match(hunger.cv.image, /hunger\.jpg/);
+  assert.equal(r.items.find((i) => i.series === 'Saga').cv.id, 6666);
+  assert.equal(r.items.at(-1).cv, null);
+  // Wat al in de kast staat valt weg (Ultimate Comics X-Men Vol. 1: Blood zit in de testkast)
+  const inKast = M.shelfTitles(state).has('ultimate comics x-men vol. 1: blood');
+  if (inKast) assert.ok(!r.items.some((i) => i.series === 'Ultimate Comics X-Men'));
+  assert.equal(r.stale, false);
+
+  const d = await body(await aanraders.POST(req('/api/aanraders', { method: 'POST', headers: H, body: JSON.stringify({ dismiss: hunger.key }) })));
+  assert.ok(!d.items.some((i) => i.key === hunger.key));
+  assert.equal(d.dismissedCount, 1);
+
+  // Snel nog eens verversen doet niets (dubbel tikken kost geen geld); daarna gaat "niks voor mij" mee naar Claude
+  await aanraders.POST(req('/api/aanraders', { method: 'POST', headers: H, body: JSON.stringify({ refresh: true }) }));
+  const stored = JSON.parse(fake.store.get('fc:aanraders'));
+  stored.generatedAt = '2026-01-01T00:00:00.000Z';
+  fake.store.set('fc:aanraders', JSON.stringify(stored));
+  const again = await body(await aanraders.POST(req('/api/aanraders', { method: 'POST', headers: H, body: JSON.stringify({ refresh: true }) })));
+  assert.match(fake.lastPrompt.messages[0].content, /Not for me[\s\S]*Hunger/);
+  assert.ok(!again.items.some((i) => i.key === hunger.key));
+
+  const u = await body(await aanraders.POST(req('/api/aanraders', { method: 'POST', headers: H, body: JSON.stringify({ undismiss: hunger.key }) })));
+  assert.ok(u.items.some((i) => i.key === hunger.key));
+  assert.equal((await aanraders.GET(req('/api/aanraders'))).status, 401);
+});
+
+test('aanraders: zonder sleutel een duidelijke melding', async () => {
+  const key = process.env.ANTHROPIC_API_KEY;
+  delete process.env.ANTHROPIC_API_KEY;
+  fake.store.set('fc:aanraders', JSON.stringify({}));
+  const r = await body(await aanraders.POST(req('/api/aanraders', { method: 'POST', headers: H, body: JSON.stringify({ refresh: true }) })));
+  process.env.ANTHROPIC_API_KEY = key;
+  assert.equal(r.status, 503);
+  assert.match(r.error, /ANTHROPIC_API_KEY/);
 });

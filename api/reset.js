@@ -13,5 +13,6 @@ export const POST = handle(async (request) => {
   const record = { rev: (stored.rev || 0) + 1, updatedAt: now, resetAt: now, epoch: randomUUID(), state: emptyState() };
   await setJson(KEYS.state, record);
   await setJson(KEYS.checks, {});
+  await setJson(KEYS.recs, {});
   return json(record);
 });

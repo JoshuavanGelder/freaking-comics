@@ -5,6 +5,7 @@ import { getState } from '../store.js';
 import { h, icon, cover, progress, section, bubble, formatDate } from '../ui.js';
 import { isConnected } from '../api.js';
 import * as A from '../actions.js';
+import { homeRecs } from './aanraders.js';
 
 export function continueCard(state, series) {
   const next = M.nextUp(state, series.id);
@@ -95,7 +96,7 @@ export function shelfItem(state, series, { extra } = {}) {
   );
 }
 
-export function homeView() {
+export function homeView(ctx) {
   const state = getState();
   const header = h(
     'header',
@@ -164,6 +165,7 @@ export function homeView() {
             ? h('div', { class: 'stack', style: { gap: '16px' } }, cont.map((s) => continueCard(state, s)))
             : h('p', { class: 'hint' }, 'Je bent nergens mee bezig. Kies iets van de stapel of uit je kast.'),
         ),
+        homeRecs(ctx),
         soon.length ? section('Binnenkort', `${soon.length}`, strip(soon, 'soon')) : null,
         stack.length
           ? section('Op de stapel', `${stack.length}`, h('div', { class: 'stack' }, stack.map((s) => shelfItem(state, s))))

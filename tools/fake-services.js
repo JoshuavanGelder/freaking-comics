@@ -45,7 +45,8 @@ const CV_VOLUMES = [
   { id: 2222, name: 'The Flash', start_year: '2011', publisher: { name: 'DC Comics' }, count_of_issues: 52 },
   { id: 3333, name: 'Ultimate Comics: Divided We Fall, United We Stand', start_year: '2013', publisher: { name: 'Marvel' }, count_of_issues: 1 },
   { id: 4444, name: 'Ultimate Comics X-Men', start_year: '2012', publisher: { name: 'Marvel' }, count_of_issues: 3 },
-  { id: 5555, name: 'Hunger', start_year: '2013', publisher: { name: 'Marvel' }, count_of_issues: 1 },
+  { id: 5555, name: 'Hunger', start_year: '2013', publisher: { name: 'Marvel' }, count_of_issues: 1, image: { medium_url: 'https://comicvine.gamespot.com/a/uploads/fake/hunger.jpg' } },
+  { id: 6666, name: 'Saga', start_year: '2012', publisher: { name: 'Image' }, count_of_issues: 10 },
 ];
 const CV_ISSUES = [];
 FLASH_TITLES.forEach((title, i) => {
@@ -104,8 +105,25 @@ const READING_LISTS = [
     items: [['Hunger', 2013, '1', '2013-07-01', 'PROLOGUE'], ['Hunger', 2013, '2', '2013-08-01', 'PROLOGUE'], ["Cataclysm: The Ultimates' Last Stand", 2013, '1', '2013-11-01', 'CORE'], ['Cataclysm: Ultimate X-Men', 2013, '1', '2013-12-01', 'TIE_IN'], ["Cataclysm: The Ultimates' Last Stand", 2013, '2', '2013-12-01', 'CORE']] },
 ];
 
+// ---------------------------------------------------------------- nep-Claude
+const RECS = [
+  { series: 'Hunger', title: 'Hunger', publisher: 'Marvel', year: 2013, creators: 'Joshua Hale Fialkov / Leonard Kirk', kind: 'vervolg', because: 'Ultimate Comics: Divided We Fall, United We Stand', reason: 'Hier begint het einde van het Ultimate-universum. Na Divided We Fall wil je weten hoe het afloopt.' },
+  { series: 'Saga', title: 'Vol. 1', publisher: 'Image', year: 2012, creators: 'Brian K. Vaughan / Fiona Staples', kind: 'klassieker', because: '', reason: 'Snel, grappig en groots. Als je van vaart houdt zoals in The Flash, zit je hier goed.' },
+  { series: 'Ultimate Comics X-Men', title: 'Vol. 1: Blood', publisher: 'Marvel', year: 2011, creators: 'Nick Spencer', kind: 'vervolg', because: '', reason: 'Staat al in je kast als het goed is.' },
+  { series: 'Verzonnen Strip Die Niet Bestaat', title: 'Vol. 1', publisher: 'DC', year: 2015, creators: '', kind: 'vergelijkbaar', because: '', reason: 'Test zonder Comic Vine-treffer.' },
+];
+
+function anthropic(url, init) {
+  fake.calls.push(url.pathname);
+  const headers = new Headers(init?.headers);
+  if (headers.get('x-api-key') !== 'ai-test-key') return respond({ type: 'error', error: { type: 'authentication_error', message: 'invalid x-api-key' } }, 401);
+  fake.lastPrompt = JSON.parse(init.body);
+  return respond({ id: 'msg_fake', type: 'message', role: 'assistant', content: [{ type: 'tool_use', id: 'tu_1', name: 'aanraders', input: { items: RECS } }], stop_reason: 'tool_use' });
+}
+
 export const fake = {
   calls: [],
+  lastPrompt: null,
   /** Voegt een nieuw deel toe aan een nep-serie (voor de "nieuwe delen"-test). */
   addIssue(seriesId, number, title, storeDate) {
     ISSUES.push({ id: 90000 + ISSUES.length, seriesId, number: String(number), title, store_date: storeDate, reprints: [] });
@@ -191,6 +209,7 @@ export function installFakes() {
   process.env.COMICVINE_API_KEY ||= 'cv-test-key';
   process.env.APP_SECRET ||= 'geheim';
   process.env.CRON_SECRET ||= 'cron-geheim';
+  process.env.ANTHROPIC_API_KEY ||= 'ai-test-key';
   process.env.KV_REST_API_URL ||= 'https://fake-redis.local';
   process.env.KV_REST_API_TOKEN ||= 'redis-token';
   const real = globalThis.fetch;
@@ -199,6 +218,7 @@ export function installFakes() {
     if (url.hostname === 'metron.cloud') return metron(url, init);
     if (url.hostname === 'comicvine.gamespot.com') return comicvine(url, init);
     if (url.hostname === 'fake-redis.local') return upstash(init);
+    if (url.hostname === 'api.anthropic.com') return anthropic(url, init);
     return real(input, init);
   };
 }

@@ -53,6 +53,7 @@ function volumeRow(v, series, isNext = false) {
       v.isNew ? h('span', { class: 'tag tag--new' }, 'NIEUW') : null,
       v.kind === 'event' ? h('span', { class: 'tag tag--red' }, 'EVENT') : null,
       v.isSide ? h('span', { class: 'tag' }, 'ZIJVERHAAL') : null,
+      v.rating === 'top' ? h('span', { class: 'tag tag--top' }, 'TOP') : null,
       h('div', { class: 'vol-row__title' }, M.volumeName(v)),
       h('div', { class: 'sub' }, sub),
     ),
@@ -199,6 +200,28 @@ function statBox(num, label) {
   return h('div', { class: 'stat' }, h('div', { class: 'stat__num' }, String(num)), h('div', { class: 'stat__label' }, label));
 }
 
+function ratingBlock(v) {
+  const btn = (value, iconName, text) =>
+    h(
+      'button',
+      {
+        class: `btn is-${value}`,
+        type: 'button',
+        'aria-pressed': String(v.rating === value),
+        'data-key': `rate-${value}`,
+        onClick: () => A.setRating(v.id, value),
+      },
+      icon(iconName, { size: 18, width: 2.4 }),
+      text,
+    );
+  return h(
+    'div',
+    {},
+    h('p', { class: 'field-label', id: 'rate-label' }, 'Wat vond je ervan?'),
+    h('div', { class: 'rating', role: 'group', 'aria-labelledby': 'rate-label' }, btn('top', 'up', 'Top'), btn('niks', 'down', 'Niks')),
+  );
+}
+
 function segmented(label, options, current, onPick, keyPrefix) {
   return h(
     'div',
@@ -276,6 +299,7 @@ export function volumeView({ id }, ctx) {
           (value) => A.setOwnership(id, value),
           'own',
         ),
+        v.readStatus !== 'unread' ? ratingBlock(v) : null,
         v.note ? h('div', { class: 'note' }, v.note) : null,
         section(
           'Wat zit erin',

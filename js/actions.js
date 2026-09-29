@@ -68,3 +68,12 @@ export function deleteVolume(volumeId) {
   dispatch((s) => M.deleteVolume(s, volumeId), { undoable: true });
   if (v) toast(`${M.volumeShortName(v)} is verwijderd.`, UNDO);
 }
+
+export function setRating(volumeId, rating) {
+  const before = M.getVolume(getState(), volumeId);
+  dispatch((s) => M.setRating(s, volumeId, rating), { undoable: true });
+  const after = M.getVolume(getState(), volumeId);
+  if (!before || !after) return;
+  if (after.rating === 'top') toast('Top! Daar houden de aanraders rekening mee.', UNDO);
+  else if (after.rating === 'niks') toast('Genoteerd: niks voor jou.', UNDO);
+}

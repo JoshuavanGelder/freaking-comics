@@ -9,6 +9,9 @@ export const OWNERSHIP = /** @type {const} */ (['none', 'owned', 'wishlist']);
 
 export const READ_LABELS = { unread: 'Nog niet', reading: 'Bezig', read: 'Gelezen' };
 export const OWN_LABELS = { none: 'Niet in bezit', owned: 'In bezit', wishlist: 'Verlanglijst' };
+/** Wat je van een boek vond: 'top' of 'niks' (of nog niets). */
+export const RATINGS = /** @type {const} */ (['top', 'niks']);
+export const RATING_LABELS = { top: 'Top', niks: 'Niks' };
 
 export const FORMATS = {
   trade: 'Trade paperback',
@@ -461,6 +464,7 @@ function cleanVolumeData(data) {
     // Automatisch aan de route toegevoegd: 'fill' (aanvullen uit series) of 'list:<bron>:<id>' (leeslijst)
     auto: typeof data.auto === 'string' ? data.auto : null,
     ownership: OWNERSHIP.includes(data.ownership) ? data.ownership : 'none',
+    rating: RATINGS.includes(data.rating) ? data.rating : null,
     note: String(data.note || '').trim(),
     cover: cleanUrl(data.cover),
     storeDate: cleanDate(data.storeDate),
@@ -529,6 +533,15 @@ export function setOwnership(state, id, ownership, now = nowIso()) {
   const v = getVolume(state, id);
   if (!v || !OWNERSHIP.includes(ownership)) return state;
   return replaceVolume(state, { ...v, ownership, updatedAt: now });
+}
+
+/** Top of Niks voor een boek; nogmaals dezelfde keuze haalt hem weer weg. */
+export function setRating(state, id, rating, now = nowIso()) {
+  const v = getVolume(state, id);
+  if (!v) return state;
+  const next = RATINGS.includes(rating) && v.rating !== rating ? rating : null;
+  if (next === (v.rating || null)) return state;
+  return replaceVolume(state, { ...v, rating: next, updatedAt: now });
 }
 
 /** Zet de leesstatus van een heel boek. "Gelezen" vinkt alle issues aan, "Nog niet" alles uit. */
@@ -1344,4 +1357,58 @@ export function beforeAfter(state, volume, lists) {
     });
   }
   return res;
+}
+
+// ---------------------------------------------------------------- aanraders
+
+/**
+ * Korte tekst over wat er in de kast staat en wat je ervan vond, als basis voor aanraders.
+ * Series waar je het laatst mee bezig was eerst; automatisch toegevoegde, onaangeraakte delen tellen niet mee.
+ */
+export function tasteProfile(state, { maxVolumes = 80 } = {}) {
+  const lines = [];
+  let count = 0;
+  const series = [...state.series].sort((a, b) => String(b.lastActivityAt || '').localeCompare(String(a.lastActivityAt || '')));
+  for (const s of series) {
+    const vols = volumesOf(state, s.id).filter((v) => !isUntouchedAuto(v));
+    if (!vols.length) continue;
+    const head = [s.title, [s.publisher, s.line, s.years].filter(Boolean).join(', ')].filter(Boolean);
+    lines.push(`## ${head[0]}${head[1] ? ` (${head[1]})` : ''}${s.paused ? ' [op pauze]' : ''}`);
+    for (const v of vols) {
+      if (count >= maxVolumes) break;
+      count += 1;
+      const bits = [READ_LABELS[v.readStatus].toLowerCase()];
+      if (v.rating) bits.push(`vond ik ${RATING_LABELS[v.rating].toUpperCase()}`);
+      if (v.ownership === 'owned') bits.push('in bezit');
+      if (v.ownership === 'wishlist') bits.push('op verlanglijst');
+      if (v.kind === 'side') bits.push('zijverhaal');
+      const year = v.storeDate ? ` ${v.storeDate.slice(0, 4)}` : '';
+      const issues = formatIssues(v.issues, s.title);
+      lines.push(`- ${volumeName(v)}${year}${issues ? ` [${issues}]` : ''}: ${bits.join(', ')}`);
+    }
+  }
+  return lines.join('\n');
+}
+
+/** Titels van alles wat al in de kast staat (om dubbele aanraders te vermijden), in kleine letters. */
+export function shelfTitles(state) {
+  const out = new Set();
+  for (const s of state.series) out.add(s.title.toLowerCase());
+  for (const v of state.volumes) {
+    const s = getSeries(state, v.seriesId);
+    out.add(`${s?.title || ''} ${volumeName(v)}`.toLowerCase().trim());
+  }
+  return out;
+}
+
+/** Zoekt een boek in de kast op titel ("Vol. 3: Gorilla Warfare", "The Flash Vol. 3: Gorilla Warfare" of "Gorilla Warfare"). */
+export function findVolumeByTitle(state, text) {
+  const t = String(text || '').toLowerCase().trim();
+  if (!t) return null;
+  const names = (v) => {
+    const s = getSeries(state, v.seriesId);
+    const n = volumeName(v).toLowerCase();
+    return [n, v.title.toLowerCase(), `${(s?.title || '').toLowerCase()} ${n}`, `${(s?.title || '').toLowerCase()} ${v.title.toLowerCase()}`];
+  };
+  return state.volumes.find((v) => names(v).includes(t)) || state.volumes.find((v) => v.title.length > 3 && t.endsWith(v.title.toLowerCase())) || null;
 }

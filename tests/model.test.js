@@ -189,3 +189,20 @@ test('issuesToText: terug te lezen zonder verlies', () => {
   }
   assert.equal(M.issuesToText(M.parseIssues('#1-3, Annual #1', 'X').issues, 'X'), '#1–3\nX Annual #1');
 });
+
+test('waardering: Top/Niks per boek, nogmaals tikken haalt weg; komt in het leesprofiel', () => {
+  let state = seedState();
+  const flash = state.series.find((s) => s.title === 'The Flash');
+  const v = M.volumesOf(state, flash.id)[0];
+  state = M.setRating(state, v.id, 'top');
+  assert.equal(M.getVolume(state, v.id).rating, 'top');
+  assert.match(M.tasteProfile(state), /## The Flash[\s\S]*Move Forward.*gelezen, vond ik TOP/);
+  state = M.setRating(state, v.id, 'niks');
+  assert.equal(M.getVolume(state, v.id).rating, 'niks');
+  state = M.setRating(state, v.id, 'niks');
+  assert.equal(M.getVolume(state, v.id).rating, null);
+  // Blijft bewaard bij sync/import
+  state = M.setRating(state, v.id, 'top');
+  assert.equal(M.getVolume(M.normalizeState(JSON.parse(JSON.stringify(state))), v.id).rating, 'top');
+  assert.equal(M.getVolume(M.updateVolume(state, v.id, { note: 'mooi' }), v.id).rating, 'top');
+});
