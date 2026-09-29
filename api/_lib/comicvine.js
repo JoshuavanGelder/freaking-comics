@@ -61,7 +61,8 @@ const LEAD_WORDS = new Set(['collects', 'collecting', 'collected', 'collection',
 
 /** "THE FLASH" → "The Flash"; laat gewone schrijfwijze staan. */
 function niceName(s) {
-  const t = s.trim().replace(/[\s:,;.!]+$/, '');
+  // Jaartal in de naam eraf: "ULTIMATE COMICS SPIDER-MAN (2011)" → "Ultimate Comics Spider-Man"
+  const t = s.trim().replace(/[\s:,;.!]+$/, '').replace(/\s*\(?\b(19|20)\d{2}\)?$/, '').replace(/[\s:,;.!]+$/, '');
   return t === t.toUpperCase() ? titleCase(t) : t;
 }
 
@@ -209,7 +210,7 @@ export async function getVolume(id) {
 
 /** Alle nummers van een Comic Vine-volume, meteen met details (cover, titel, datum, inhoud). Max. 500. */
 export async function listVolumeIssues(id, { fresh = false } = {}) {
-  const key = `fc:cv:volume-issues2:${Number(id)}`;
+  const key = `fc:cv:volume-issues3:${Number(id)}`;
   const load = async () => {
     const vol = await getVolume(id);
     const items = [];

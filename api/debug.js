@@ -4,7 +4,7 @@ import { timingSafeEqual, createHash } from 'node:crypto';
 import { json, handle, HttpError } from './_lib/http.js';
 import { getJson, KEYS } from './_lib/store.js';
 import { cvGet } from './_lib/comicvine.js';
-import { metronGet } from './_lib/metron.js';
+import { metronGet, findIssueSeries, listSeriesItems } from './_lib/metron.js';
 
 function allowed(key) {
   const secret = process.env.CRON_SECRET;
@@ -62,6 +62,16 @@ export const GET = handle(async (request) => {
   if (what === 'metron-list-items') {
     const d = await metronGet(`reading_list/${Number(p.get('id'))}/items/`, { page: p.get('page') || 1 });
     return json({ count: d.count, next: !!d.next, items: d.results.map((i) => `${i.order}. ${i.issue?.series?.name} (${i.issue?.series?.year_began}) #${i.issue?.number} ${i.issue_type || ''} ${i.issue?.cover_date || ''}`) });
+  }
+
+  if (what === 'route-series') {
+    const out = [];
+    for (const name of (p.get('names') || '').split('|').filter(Boolean)) {
+      const found = await findIssueSeries(name, Number(p.get('year')) || null);
+      const items = found ? await listSeriesItems(found.id) : [];
+      out.push({ name, found, count: items.length, first: items.slice(0, 3).map((i) => `#${i.number} ${i.cover_date}`), last: items.slice(-2).map((i) => `#${i.number} ${i.cover_date}`) });
+    }
+    return json(out);
   }
 
   if (what === 'metron-search') {

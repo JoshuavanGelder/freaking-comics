@@ -168,3 +168,50 @@ export async function listSeriesItems(id, { fresh = false, deadline } = {}) {
 export async function getIssue(id, { deadline } = {}) {
   return cached(KEYS.metronIssue(id), 7 * 86400, async () => simplifyIssue(await metronGet(`issue/${Number(id)}/`, {}, { deadline })));
 }
+
+// ---------------------------------------------------------------- leesroute: series en leeslijsten
+
+const COLLECTED = /trade paperback|hardcover|hard cover|omnibus|graphic novel/i;
+
+function norm(s) {
+  return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+/**
+ * Zoekt de doorlopende serie (losse nummers) bij een naam, bijv. "Ultimate Comics X-Men".
+ * Voorkeur: exact dezelfde naam, geen trade, beginjaar het dichtst bij `year`.
+ */
+export async function findIssueSeries(name, year) {
+  const data = await metronGet('series/', { name });
+  const all = (data.results || []).map(simplifySeries).filter((s) => !COLLECTED.test(s.type));
+  const exact = all.filter((s) => norm(s.name.replace(/\s*\(\d{4}\).*$/, '')) === norm(name));
+  const pool = exact.length ? exact : all;
+  if (!pool.length) return null;
+  pool.sort((a, b) => Math.abs((a.year || 0) - (year || a.year || 0)) - Math.abs((b.year || 0) - (year || b.year || 0)));
+  return pool[0];
+}
+
+export async function searchReadingLists(q) {
+  const data = await metronGet('reading_list/', { name: q });
+  return (data.results || []).map((r) => ({ id: r.id, name: r.name, type: r.list_type || '', user: r.user?.username || '', source: r.attribution_source || '' }));
+}
+
+/** Alle nummers van een leeslijst, op volgorde (max. 500). */
+export async function readingListItems(id) {
+  const items = [];
+  for (let page = 1; page <= 5; page += 1) {
+    const d = await metronGet(`reading_list/${Number(id)}/items/`, { page });
+    for (const i of d.results || []) {
+      items.push({
+        order: i.order,
+        series: i.issue?.series?.name || '',
+        year: i.issue?.series?.year_began || null,
+        number: String(i.issue?.number ?? ''),
+        date: i.issue?.cover_date || i.issue?.store_date || null,
+        type: i.issue_type || '',
+      });
+    }
+    if (!d.next) break;
+  }
+  return items.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+}

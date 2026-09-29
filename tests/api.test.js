@@ -213,3 +213,21 @@ test('Comic Vine: inhoud uit echte omschrijvingen (The Flash New 52)', async () 
   assert.equal(g('Collects THE FLASH #41-47 and the Sneak Peek story from CONVERGENCE: DETECTIVE COMICS #2.'), '#41–47, Convergence Detective Comics #2');
   assert.equal(g('with Zoom from issues #48-52, The Flash is on the run'), '#48–52');
 });
+
+test('leesroute: nummers per serie en Metron-leeslijsten', async () => {
+  const routeSeries = await import('../api/route/series.js');
+  const lists = await import('../api/metron/lists.js');
+  const r = await body(await routeSeries.GET(req('/api/route/series?names=Ultimate%20Comics%20X-Men|Ultimate%20Comics%20Ultimates|Bestaat%20Niet&year=2012', { headers: H })));
+  assert.equal(r.results[0].found.id, 4001);
+  assert.equal(r.results[0].issues.length, 20);
+  assert.ok(r.results[0].issues[0].date);
+  assert.equal(r.results[1].issues.length, 24);
+  assert.equal(r.results[2].found, null);
+  const l = await body(await lists.GET(req('/api/metron/lists?q=cata', { headers: H })));
+  assert.equal(l.results[0].name, 'Cataclysm');
+  const items = await body(await lists.GET(req('/api/metron/lists?id=27', { headers: H })));
+  assert.equal(items.items.length, 5);
+  assert.equal(items.items[3].type, 'TIE_IN');
+  assert.equal(M.kindFromListType('Event', 'TIE_IN'), 'side');
+  assert.equal(M.kindFromListType('Event', 'CORE'), 'event');
+});

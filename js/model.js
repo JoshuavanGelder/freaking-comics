@@ -749,12 +749,20 @@ export function volumeDataFromMetron(item, format) {
   const fallbackName = item.issue ? splitMetronSeriesName(String(item.issue).replace(/\s*#.*$/, '')).name : '';
   // "Volume 1: Move Forward" → "Move Forward" (het deelnummer staat er al apart bij)
   const rawTitle = String(item.title || '').trim();
-  const stripped = rawTitle.replace(/^vol(?:ume)?\.?\s*\d+(?:\.\d+)?\s*[:.\-–]\s*/i, '').trim();
+  let stripped = rawTitle.replace(/^vol(?:ume)?\.?\s*\d+(?:\.\d+)?\s*[:.\-–]\s*/i, '').trim();
+  // Alleen een formaat als naam ("HC", "TPB", "Volume 2") zegt niets: dan de naam van de reeks.
+  if (/^(hc|tpb|sc|gn|omnibus|hardcover|trade paperback|paperback|vol(ume)?\.?\s*\d+)(\s+(hc|tpb|sc))?$/i.test(stripped)) stripped = '';
+  const onlyFormat = !stripped && rawTitle;
+  const fromReeks = fallbackName
+    ? format === 'issue'
+      ? `${fallbackName} #${item.number}`
+      : item.number && item.number !== '1' ? `${fallbackName} Vol. ${item.number}` : fallbackName
+    : '';
   const title =
     stripped ||
-    rawTitle ||
     (Array.isArray(item.name) && item.name.filter(Boolean).join(' / ')) ||
-    (format === 'issue' && fallbackName ? `${fallbackName} #${item.number}` : '') ||
+    fromReeks ||
+    (onlyFormat ? rawTitle : '') ||
     `Deel ${item.number}`;
   return {
     title,
@@ -1105,4 +1113,128 @@ export function sortByDate(state, seriesId, now = nowIso()) {
     ...state,
     volumes: state.volumes.map((v) => (pos.has(v.id) && v.position !== pos.get(v.id) ? { ...v, position: pos.get(v.id), updatedAt: now } : v)),
   };
+}
+
+// ---------------------------------------------------------------- leesroute automatisch aanvullen
+
+/** De series die in je boeken zitten, bijv. ["Ultimate Comics Ultimates", "Ultimate Comics X-Men"]. */
+export function seriesInBooks(state, seriesId) {
+  const seen = new Map();
+  for (const v of volumesOf(state, seriesId)) {
+    for (const i of v.issues) {
+      const k = i.series.trim().toLowerCase();
+      if (k && !seen.has(k)) seen.set(k, i.series.trim());
+    }
+  }
+  return [...seen.values()];
+}
+
+function issueNum(n) {
+  const x = Number(n);
+  return Number.isFinite(x) ? x : null;
+}
+
+/** Deelt oplopende nummers op in aaneengesloten stukken van max. `size` (zoals een trade). */
+function chunkRuns(issues, size) {
+  const runs = [];
+  let cur = [];
+  for (const i of issues) {
+    const prev = cur[cur.length - 1];
+    const cont = prev && issueNum(prev.number) != null && issueNum(i.number) === issueNum(prev.number) + 1 && prev.kind === i.kind;
+    if (cur.length && (!cont || cur.length >= size)) {
+      runs.push(cur);
+      cur = [];
+    }
+    cur.push(i);
+  }
+  if (cur.length) runs.push(cur);
+  return runs;
+}
+
+function runTitle(run) {
+  const first = run[0].number;
+  const last = run[run.length - 1].number;
+  return `${run[0].series} ${first === last ? `#${first}` : `#${first}–${last}`}`;
+}
+
+/**
+ * Vult een leesroute aan met de nummers die nog niet in je boeken zitten.
+ * `sources`: [{ series, issues: [{ number, date, kind? }] }] – per serie, of één lijst op volgorde
+ * (leeslijst: dan `ordered: true`). Nummers die al in een boek zitten worden overgeslagen; de rest
+ * wordt gegroepeerd in blokken van `chunk` en alles komt op volgorde van verhaal-datum.
+ * @returns {{ state, added: number }}
+ */
+export function fillRoute(state, seriesId, sources, { chunk = 6, ordered = false, defaultKind = 'main', now = nowIso() } = {}) {
+  const covered = new Set();
+  for (const v of volumesOf(state, seriesId)) for (const i of v.issues) covered.add(issueKey(i));
+  const dateOf = new Map();
+  const entries = [];
+
+  for (const src of sources) {
+    const list = (src.issues || [])
+      .map((i) => ({ series: (i.series || src.series).trim(), number: String(i.number), date: i.date || null, kind: i.kind || defaultKind }))
+      .filter((i) => i.series && i.number !== '');
+    for (const i of list) if (i.date) dateOf.set(issueKey(i), i.date);
+    const open = list.filter((i) => !covered.has(issueKey(i)));
+    if (!ordered) open.sort((a, b) => (issueNum(a.number) ?? 1e9) - (issueNum(b.number) ?? 1e9) || String(a.number).localeCompare(String(b.number)));
+    // Bij een leeslijst: aaneengesloten stukken van dezelfde serie; anders per serie.
+    const groups = ordered ? [open] : [open];
+    for (const g of groups) {
+      const runs = [];
+      let cur = [];
+      for (const i of g) {
+        if (cur.length && cur[0].series.toLowerCase() !== i.series.toLowerCase()) {
+          runs.push(...chunkRuns(cur, chunk));
+          cur = [];
+        }
+        cur.push(i);
+      }
+      if (cur.length) runs.push(...chunkRuns(cur, chunk));
+      for (const run of runs) {
+        entries.push({ run, date: run.map((i) => i.date).filter(Boolean).sort()[0] || null });
+        for (const i of run) covered.add(issueKey(i));
+      }
+    }
+  }
+
+  let next = state;
+  let added = 0;
+  for (const e of entries) {
+    const kind = e.run.every((i) => i.kind === e.run[0].kind) ? e.run[0].kind : 'main';
+    const r = addVolume(next, {
+      seriesId,
+      title: runTitle(e.run),
+      number: '',
+      position: 0,
+      format: 'issue',
+      kind,
+      issues: e.run.map((i) => ({ id: makeId('i'), series: i.series, number: i.number, read: false })),
+      storeDate: e.date,
+    }, now);
+    next = r.state;
+    added += 1;
+  }
+
+  // Alles op verhaal-datum: een boek staat op de datum van het eerste nummer erin (niet de uitgavedatum van het boek).
+  const vols = volumesOf(next, seriesId);
+  const storyDate = (v) => v.issues.map((i) => dateOf.get(issueKey(i))).filter(Boolean).sort()[0] || v.storeDate || null;
+  let last = '';
+  const keyed = vols.map((v, i) => {
+    const d = storyDate(v);
+    if (d) last = d;
+    return { v, d: d || last, i };
+  });
+  keyed.sort((a, b) => (a.d || '').localeCompare(b.d || '') || a.i - b.i);
+  const pos = new Map(keyed.map((k, n) => [k.v.id, n + 1]));
+  next = {
+    ...next,
+    volumes: next.volumes.map((v) => (pos.has(v.id) && v.position !== pos.get(v.id) ? { ...v, position: pos.get(v.id), updatedAt: now } : v)),
+  };
+  return { state: next, added };
+}
+
+/** Metron-leeslijst: CORE/PROLOGUE/EPILOGUE → hoofdverhaal of event, TIE_IN → zijverhaal. */
+export function kindFromListType(listType, issueType) {
+  if (issueType === 'TIE_IN' || issueType === 'Tie-In') return 'side';
+  return /event/i.test(listType || '') ? 'event' : 'main';
 }

@@ -4,6 +4,8 @@
 const store = new Map();
 
 const SERIES = [
+  { id: 4001, series: 'Ultimate Comics X-Men (2011)', name: 'Ultimate Comics X-Men', year_began: 2011, year_end: 2013, volume: 1, issue_count: 20, publisher: { id: 1, name: 'Marvel' }, series_type: { id: 1, name: 'Ongoing Series' } },
+  { id: 4002, series: 'Ultimate Comics Ultimates (2011)', name: 'Ultimate Comics Ultimates', year_began: 2011, year_end: 2013, volume: 1, issue_count: 24, publisher: { id: 1, name: 'Marvel' }, series_type: { id: 1, name: 'Ongoing Series' } },
   { id: 1000, series: 'The Flash (2011)', name: 'The Flash', year_began: 2011, year_end: 2016, volume: 4, issue_count: 52, publisher: { id: 2, name: 'DC Comics' }, series_type: { id: 1, name: 'Ongoing Series' } },
   { id: 1001, series: 'The Flash TPB (2012)', name: 'The Flash', year_began: 2012, year_end: 2016, volume: 1, issue_count: 9, publisher: { id: 2, name: 'DC Comics' }, series_type: { id: 10, name: 'Trade Paperback' } },
   { id: 2001, series: 'Ultimate Comics: Divided We Fall, United We Stand HC (2013)', name: 'Ultimate Comics: Divided We Fall, United We Stand', year_began: 2013, year_end: 2013, volume: 1, issue_count: 1, publisher: { id: 1, name: 'Marvel' }, series_type: { id: 8, name: 'Hardcover' } },
@@ -94,6 +96,14 @@ function comicvine(url) {
   return respond({ error: 'Object Not Found', status_code: 101, results: [] });
 }
 
+for (let k = 1; k <= 20; k += 1) ISSUES.push({ id: 41000 + k, seriesId: 4001, number: String(k), title: '', store_date: `${2011 + Math.floor((k + 8) / 12)}-${String(((k + 8) % 12) + 1).padStart(2, '0')}-01`, reprints: [] });
+for (let k = 1; k <= 24; k += 1) ISSUES.push({ id: 42000 + k, seriesId: 4002, number: String(k), title: '', store_date: `${2011 + Math.floor((k + 7) / 12)}-${String(((k + 7) % 12) + 1).padStart(2, '0')}-01`, reprints: [] });
+
+const READING_LISTS = [
+  { id: 27, name: 'Cataclysm', list_type: 'Event', user: { username: 'Metron' }, attribution_source: 'LOCG',
+    items: [['Hunger', 2013, '1', '2013-07-01', 'PROLOGUE'], ['Hunger', 2013, '2', '2013-08-01', 'PROLOGUE'], ["Cataclysm: The Ultimates' Last Stand", 2013, '1', '2013-11-01', 'CORE'], ['Cataclysm: Ultimate X-Men', 2013, '1', '2013-12-01', 'TIE_IN'], ["Cataclysm: The Ultimates' Last Stand", 2013, '2', '2013-12-01', 'CORE']] },
+];
+
 export const fake = {
   calls: [],
   /** Voegt een nieuw deel toe aan een nep-serie (voor de "nieuwe delen"-test). */
@@ -141,6 +151,17 @@ function metron(url, init) {
   if ((m = path.match(/^series\/(\d+)\/$/))) {
     const s = SERIES.find((x) => x.id === Number(m[1]));
     return s ? respond({ ...s, name: s.name, status: 'Completed' }) : respond({ detail: 'Not found.' }, 404);
+  }
+  if (path === 'reading_list/') {
+    const q = (p.get('name') || '').toLowerCase();
+    const results = READING_LISTS.filter((l) => l.name.toLowerCase().includes(q)).map(({ items, ...l }) => l);
+    return respond({ count: results.length, next: null, results });
+  }
+  if ((m = path.match(/^reading_list\/(\d+)\/items\/$/))) {
+    const l = READING_LISTS.find((x) => x.id === Number(m[1]));
+    if (!l) return respond({ detail: 'Not found.' }, 404);
+    const results = l.items.map(([name, year, number, date, type], k) => ({ id: k + 1, order: k + 1, issue_type: type, issue: { id: 800 + k, series: { id: 1, name, volume: 1, year_began: year }, number, cover_date: date, store_date: date } }));
+    return respond({ count: results.length, next: null, results });
   }
   if (path === 'issue/') {
     const results = ISSUES.filter((i) => i.seriesId === Number(p.get('series_id'))).map(listItem);

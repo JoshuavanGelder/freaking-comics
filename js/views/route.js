@@ -2,6 +2,111 @@
 import * as M from '../model.js';
 import { getState, dispatch, undo } from '../store.js';
 import { h, icon, backButton, topbar, toast, bubble, formatDate } from '../ui.js';
+import { api, isConnected } from '../api.js';
+
+// Aanvullen uit Metron: status zolang de app open is.
+const fill = { busy: '', error: null, listQ: '', lists: null, listOpen: false };
+
+async function fillFromSeries(id, ctx) {
+  const state = getState();
+  const names = M.seriesInBooks(state, id);
+  if (!names.length) return;
+  const years = M.volumesOf(state, id).map((v) => Number(String(v.storeDate || '').slice(0, 4))).filter(Boolean);
+  const year = years.length ? Math.min(...years) : '';
+  fill.busy = `Nummers ophalen van ${names.length} ${names.length === 1 ? 'serie' : 'series'}…`;
+  fill.error = null;
+  ctx.rerender();
+  try {
+    const { results } = await api(`/api/route/series?names=${encodeURIComponent(names.join('|'))}&year=${year}`, { timeout: 90_000 });
+    const found = results.filter((r) => r.found && r.issues.length);
+    const missing = results.filter((r) => !r.found).map((r) => r.name);
+    const r = dispatch((s) => M.fillRoute(s, id, found.map((x) => ({ series: x.name, issues: x.issues }))), { undoable: true });
+    fill.busy = '';
+    const extra = missing.length ? ` Niet gevonden op Metron: ${missing.join(', ')}.` : '';
+    toast(r.added ? `${r.added} delen aan de route toegevoegd.${extra}` : `De route was al compleet.${extra}`, r.added ? UNDO : undefined);
+  } catch (err) {
+    fill.busy = '';
+    fill.error = err.message;
+  }
+  ctx.rerender();
+}
+
+async function searchLists(ctx) {
+  const q = fill.listQ.trim();
+  if (q.length < 2) return;
+  fill.busy = 'Leeslijsten zoeken…';
+  fill.error = null;
+  ctx.rerender();
+  try {
+    fill.lists = (await api(`/api/metron/lists?q=${encodeURIComponent(q)}`)).results;
+  } catch (err) {
+    fill.error = err.message;
+  }
+  fill.busy = '';
+  ctx.rerender();
+}
+
+async function addList(id, list, ctx) {
+  fill.busy = `"${list.name}" ophalen…`;
+  fill.error = null;
+  ctx.rerender();
+  try {
+    const { items } = await api(`/api/metron/lists?id=${list.id}`, { timeout: 90_000 });
+    const issues = items.map((i) => ({ series: i.series, number: i.number, date: i.date, kind: M.kindFromListType(list.type, i.type) }));
+    const r = dispatch((s) => M.fillRoute(s, id, [{ series: '', issues }], { ordered: true }), { undoable: true });
+    fill.busy = '';
+    fill.lists = null;
+    fill.listOpen = false;
+    toast(r.added ? `${r.added} delen uit "${list.name}" toegevoegd.` : `Alles uit "${list.name}" stond al in je route.`, r.added ? UNDO : undefined);
+  } catch (err) {
+    fill.busy = '';
+    fill.error = err.message;
+  }
+  ctx.rerender();
+}
+
+function fillSection(state, id, ctx) {
+  if (!isConnected()) return null;
+  const names = M.seriesInBooks(state, id);
+  return h(
+    'section',
+    { class: 'next-box', style: { borderStyle: 'dashed' } },
+    h('div', { class: 'title' }, 'Verhaallijn aanvullen'),
+    names.length
+      ? h('p', { class: 'hint' }, `Je boeken bevatten nummers uit ${names.join(', ')}. De app haalt alle andere nummers van die series op Metron op en zet ze op volgorde vóór en na je boeken.`)
+      : h('p', { class: 'hint' }, 'Voeg eerst een boek of reeks toe; daarna kan de app de rest van de verhaallijn erbij zoeken.'),
+    fill.error ? h('div', { class: 'error-box', role: 'alert' }, fill.error) : null,
+    fill.busy ? h('p', { class: 'meta', role: 'status' }, fill.busy) : null,
+    names.length
+      ? h('button', { class: 'btn btn--yellow', type: 'button', 'data-key': 'fill-series', disabled: !!fill.busy, onClick: () => fillFromSeries(id, ctx) }, 'Vul de verhaallijn aan')
+      : null,
+    fill.listOpen
+      ? h(
+          'div',
+          { class: 'stack' },
+          h(
+            'form',
+            { class: 'row', style: { flexWrap: 'nowrap' }, onSubmit: (e) => { e.preventDefault(); searchLists(ctx); } },
+            h('label', { class: 'sr-only', for: 'list-q' }, 'Leeslijst zoeken'),
+            h('input', { class: 'input', id: 'list-q', type: 'search', placeholder: 'bijv. Cataclysm', value: fill.listQ, onInput: (e) => { fill.listQ = e.target.value; } }),
+            h('button', { class: 'btn btn--ink', type: 'submit', disabled: !!fill.busy }, 'Zoek'),
+          ),
+          fill.lists
+            ? fill.lists.length
+              ? fill.lists.map((l) =>
+                  h(
+                    'button',
+                    { class: 'shelf-item', type: 'button', style: { textAlign: 'left', width: '100%' }, 'data-key': `list-${l.id}`, onClick: () => addList(id, l, ctx) },
+                    h('div', { class: 'shelf-item__body' }, h('div', { class: 'title' }, l.name), h('div', { class: 'sub' }, [l.type, l.user && `door ${l.user}`].filter(Boolean).join(' · '))),
+                    icon('plus', { width: 3 }),
+                  ),
+                )
+              : h('p', { class: 'hint' }, 'Geen leeslijsten gevonden op Metron.')
+            : h('p', { class: 'hint' }, 'Leeslijsten van Metron zetten events op volgorde; tie-ins worden zijverhalen.'),
+        )
+      : h('button', { class: 'btn', type: 'button', 'data-key': 'open-lists', onClick: () => { fill.listOpen = true; ctx.rerender(); } }, '+ Leeslijst van Metron (bijv. een event)'),
+  );
+}
 
 // Volgorde aanpassen staat per serie aan/uit zolang de app open is.
 const editing = new Set();
@@ -161,6 +266,7 @@ export function routeView({ id }, ctx) {
             ? 'Zijverhalen sla je over, tenzij je ze al gelezen hebt of zelf toevoegt met "+ Toch lezen".'
             : 'Je ziet de complete leesroute, inclusief alle zijverhalen.'),
         ),
+        fillSection(state, id, ctx),
         isEditing
           ? bubble('Zet delen op de goede plek met de pijltjes, of alles in één keer op verschijningsdatum. Kies per deel: hoofdverhaal, zijverhaal of event. Tik op ✓ als je klaar bent.')
           : null,

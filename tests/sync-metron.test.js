@@ -340,3 +340,54 @@ test('leesroute op datum: nieuw boek komt op zijn plek, sorteren op datum', () =
   s = M.sortByDate(s, id, T3);
   assert.deepEqual(M.volumesOf(s, id).map((v) => v.title), ['Fallout', 'Divided', 'Zonder datum', 'Cataclysm']);
 });
+
+test('fillRoute: route rond Divided We Fall automatisch aanvullen', () => {
+  let s = M.emptyState();
+  const r0 = M.addSeries(s, { title: 'Ultimate Comics' });
+  s = r0.state;
+  const id = r0.id;
+  const dwf = M.addVolume(s, { seriesId: id, title: 'Divided We Fall', storeDate: '2013-01-02', readStatus: 'reading',
+    issues: M.parseIssues('Ultimate Comics Ultimates #13–18\nUltimate Comics X-Men #13–18', '').issues }, T3);
+  s = dwf.state;
+  assert.deepEqual(M.seriesInBooks(s, id), ['Ultimate Comics Ultimates', 'Ultimate Comics X-Men']);
+  const month = (y, m) => `${y}-${String(m).padStart(2, '0')}-01`;
+  const ult = { series: 'Ultimate Comics Ultimates', issues: Array.from({ length: 24 }, (_, k) => ({ number: String(k + 1), date: month(2011 + Math.floor((k + 8) / 12), ((k + 8) % 12) + 1) })) };
+  const xm = { series: 'Ultimate Comics X-Men', issues: Array.from({ length: 20 }, (_, k) => ({ number: String(k + 1), date: month(2011 + Math.floor((k + 9) / 12), ((k + 9) % 12) + 1) })) };
+  const r = M.fillRoute(s, id, [ult, xm], { now: T3 });
+  s = r.state;
+  const titles = M.volumesOf(s, id).map((v) => v.title);
+  // Ultimates: 1–6, 7–12, 19–24; X-Men: 1–6, 7–12, 19–20
+  assert.equal(r.added, 6);
+  assert.ok(titles.includes('Ultimate Comics Ultimates #1–6'));
+  assert.ok(titles.includes('Ultimate Comics X-Men #19–20'));
+  // DWF staat na de #7–12's en vóór de #19's
+  const at = (t) => titles.indexOf(t);
+  assert.ok(at('Divided We Fall') > at('Ultimate Comics Ultimates #7–12'));
+  assert.ok(at('Divided We Fall') > at('Ultimate Comics X-Men #7–12'));
+  assert.ok(at('Divided We Fall') < at('Ultimate Comics Ultimates #19–24'));
+  assert.ok(at('Divided We Fall') < at('Ultimate Comics X-Men #19–20'));
+  // Bladwijzer blijft DWF (bezig); nogmaals aanvullen voegt niets toe
+  assert.equal(M.nextUp(s, id).title, 'Divided We Fall');
+  assert.equal(M.fillRoute(s, id, [ult, xm], { now: T3 }).added, 0);
+});
+
+test('fillRoute: leeslijst met tie-ins als zijverhaal', () => {
+  let s = M.emptyState();
+  const r0 = M.addSeries(s, { title: 'Ultimate Comics' });
+  s = r0.state;
+  const items = [
+    { series: 'Hunger', number: '1', date: '2013-07-01', kind: 'side' },
+    { series: 'Hunger', number: '2', date: '2013-08-01', kind: 'side' },
+    { series: 'Cataclysm: The Ultimates\' Last Stand', number: '1', date: '2013-11-01', kind: 'event' },
+    { series: 'Cataclysm: Ultimate X-Men', number: '1', date: '2013-12-01', kind: 'side' },
+    { series: 'Cataclysm: The Ultimates\' Last Stand', number: '2', date: '2013-12-01', kind: 'event' },
+  ];
+  const r = M.fillRoute(s, r0.id, [{ series: '', issues: items }], { ordered: true, now: T3 });
+  const vols = M.volumesOf(r.state, r0.id);
+  assert.deepEqual(vols.map((v) => `${v.title} [${v.kind}]`), [
+    'Hunger #1–2 [side]',
+    'Cataclysm: The Ultimates\' Last Stand #1 [event]',
+    'Cataclysm: Ultimate X-Men #1 [side]',
+    'Cataclysm: The Ultimates\' Last Stand #2 [event]',
+  ]);
+});
