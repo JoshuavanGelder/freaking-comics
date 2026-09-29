@@ -321,7 +321,9 @@ function metronBox(series) {
     return h(
       'a',
       { class: 'btn btn--ghost btn--block', href: isConnected() ? `#/zoeken?serie=${series.id}` : '#/instellingen' },
-      'Koppel online (Metron of Comic Vine): covers, issues en nieuwe delen automatisch',
+      M.volumesOf(getState(), series.id).length && M.volumesOf(getState(), series.id).every((v) => !v.number)
+        ? 'Koppel de hele serie online (bij losse boeken: liever per boek)'
+        : 'Koppel online (Metron of Comic Vine): covers, issues en nieuwe delen automatisch',
     );
   }
   return h(

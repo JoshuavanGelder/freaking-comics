@@ -47,6 +47,20 @@ export async function importSeries(metronId, localSeriesId, ctx, { confirmed = f
   try {
     const { series, items, detailed } = await api(`${base(source)}/series?id=${metronId}`, { timeout: 90_000 });
     const format = M.formatForSource(getState(), localSeriesId, source, series.type);
+    // Een verzamelserie (losse boeken zonder deelnummer, zoals "Ultimate Comics") hoort niet bij één online reeks.
+    const own = localSeriesId ? M.volumesOf(getState(), localSeriesId) : [];
+    const loose = own.length > 0 && own.every((v) => !v.number);
+    if (loose && !confirmed && !getState().series.find((s) => s.id === localSeriesId)?.metron) {
+      const ok = confirm(
+        `Deze serie bestaat uit losse boeken zonder deelnummer. Als je hem aan "${series.name}" koppelt, komen alle ${items.length} nummers van die reeks erbij.\n\n` +
+          'Beter: open elk boek en tik daar op "Koppel online".\n\nToch de hele serie koppelen?',
+      );
+      if (!ok) {
+        ui.job = null;
+        ctx.rerender();
+        return;
+      }
+    }
     const collected = source === 'comicvine' ? items.length <= 30 : format !== 'issue';
     if (!collected && !confirmed && items.length > 12) {
       const ok = confirm(
