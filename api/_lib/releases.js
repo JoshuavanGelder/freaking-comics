@@ -1,11 +1,11 @@
-// Controle op nieuwe delen: vergelijkt je gekoppelde series met Metron of Comic Vine en voegt ontbrekende delen toe.
+// Controle op nieuwe delen: loopt alle gekoppelde reeksen langs (Metron en Comic Vine) en voegt ontbrekende delen toe.
 import * as M from '../../js/model.js';
 import { listSeriesItems, getIssue, metronConfigured } from './metron.js';
 import { listVolumeIssues, comicVineConfigured } from './comicvine.js';
 
 /**
  * @param {object} state        je kast
- * @param {object} checks       { [seriesId]: laatst gecontroleerd (ISO) } – oudste eerst aan de beurt
+ * @param {object} checks       { ["serieId|bron:id"]: laatst gecontroleerd (ISO) } – oudste eerst aan de beurt
  * @param {object} opts         { deadline: ms-tijdstip waarop we stoppen, now }
  * @returns {{ state, checks, added: string[], checkedSeries: number, pending: number }}
  */
@@ -13,25 +13,32 @@ export async function checkReleases(state, checks = {}, { deadline = Date.now() 
   let next = state;
   const nextChecks = { ...checks };
   const added = [];
-  const linked = next.series
-    .filter((s) => s.metron && s.metron.id)
-    .filter((s) => (s.metron.source === 'comicvine' ? comicVineConfigured() : metronConfigured()))
-    .sort((a, b) => String(checks[a.id] || '').localeCompare(String(checks[b.id] || '')));
+  const jobs = [];
+  for (const series of next.series) {
+    for (const link of M.seriesLinks(series)) {
+      if (link.source === 'comicvine' ? !comicVineConfigured() : !metronConfigured()) continue;
+      const key = M.linkKeyOf(link);
+      // Oude sleutel (alleen serie-id) telt ook, zodat de eerste koppeling niet opnieuw vooraan komt.
+      jobs.push({ series, link, key, check: `${series.id}|${key}`, last: checks[`${series.id}|${key}`] || checks[series.id] || '' });
+    }
+  }
+  jobs.sort((a, b) => String(a.last).localeCompare(String(b.last)));
 
-  let checkedSeries = 0;
-  for (const series of linked) {
+  let checked = 0;
+  for (const job of jobs) {
     if (Date.now() > deadline - 5_000) break;
+    const { series, link, key } = job;
     const vols = M.volumesOf(next, series.id);
-    const known = new Set(vols.map((v) => v.metronId).filter((x) => x != null));
-    const format = M.formatForSource(next, series.id, series.metron.source, series.metron.type);
+    const known = new Set(vols.filter((v) => !v.linkKey || v.linkKey === key).map((v) => v.metronId).filter((x) => x != null));
+    const format = M.formatForSource(next, series.id, link.source, link.type);
     let payload;
     let complete = true;
 
-    if (series.metron.source === 'comicvine') {
+    if (link.source === 'comicvine') {
       // Comic Vine levert de details meteen mee.
-      payload = await listVolumeIssues(series.metron.id, { fresh: true });
+      payload = await listVolumeIssues(link.id, { fresh: true });
     } else {
-      const items = await listSeriesItems(series.metron.id, { fresh: true, deadline });
+      const items = await listSeriesItems(link.id, { fresh: true, deadline });
       // Details alleen ophalen voor delen die nog niet in je kast staan.
       const missing = items.filter((i) => !known.has(i.id));
       const detailed = [];
@@ -45,12 +52,12 @@ export async function checkReleases(state, checks = {}, { deadline = Date.now() 
       payload = [...items.filter((i) => known.has(i.id)).map((i) => ({ ...i, title: '' })), ...detailed];
     }
 
-    const r = M.applyMetronItems(next, series.id, payload, format, { markNew: true, now });
+    const r = M.applyMetronItems(next, series.id, payload, format, { markNew: true, now, linkKey: key, umbrella: link.umbrella || '' });
     next = r.state;
     added.push(...r.added);
-    if (complete) nextChecks[series.id] = now;
-    checkedSeries += 1;
+    if (complete) nextChecks[job.check] = now;
+    checked += 1;
   }
   next = { ...next, releasesCheckedAt: now };
-  return { state: next, checks: nextChecks, added, checkedSeries, pending: linked.length - checkedSeries };
+  return { state: next, checks: nextChecks, added, checkedSeries: checked, pending: jobs.length - checked };
 }

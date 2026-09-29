@@ -9,6 +9,7 @@ import { kastView, wishlistView } from './views/lists.js';
 import { serieView, volumeView } from './views/detail.js';
 import { serieFormView, volumeFormView } from './views/forms.js';
 import { settingsView } from './views/settings.js';
+import { routeView } from './views/route.js';
 
 const routes = [
   [/^\/$/, () => homeView()],
@@ -19,6 +20,7 @@ const routes = [
   [/^\/toevoegen$/, (_m, ctx, q) => volumeFormView({}, ctx, q)],
   [/^\/serie\/nieuw$/, () => serieFormView()],
   [/^\/serie\/([\w-]+)\/bewerken$/, (m) => serieFormView({ id: m[1] })],
+  [/^\/serie\/([\w-]+)\/route$/, (m, ctx) => routeView({ id: m[1] }, ctx)],
   [/^\/serie\/([\w-]+)$/, (m, ctx) => serieView({ id: m[1] }, ctx)],
   [/^\/volume\/nieuw$/, (_m, ctx, q) => volumeFormView({}, ctx, q)],
   [/^\/volume\/([\w-]+)\/bewerken$/, (m, ctx, q) => volumeFormView({ id: m[1] }, ctx, q)],

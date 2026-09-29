@@ -51,7 +51,8 @@ function volumeRow(v, series, isNext = false) {
       'div',
       { class: 'vol-row__body' },
       v.isNew ? h('span', { class: 'tag tag--new' }, 'NIEUW') : null,
-      v.isSide ? h('span', { class: 'tag' }, 'TUSSENDOOR') : null,
+      v.kind === 'event' ? h('span', { class: 'tag tag--red' }, 'EVENT') : null,
+      v.isSide ? h('span', { class: 'tag' }, 'ZIJVERHAAL') : null,
       h('div', { class: 'vol-row__title' }, M.volumeName(v)),
       h('div', { class: 'sub' }, sub),
     ),
@@ -137,6 +138,7 @@ export function serieView({ id }, ctx) {
             ? h('button', { class: 'btn', type: 'button', 'data-key': 'pause', style: { flex: '1' }, onClick: () => A.setPaused(id, false) }, icon('play', { size: 16 }), 'Hervatten')
             : h('button', { class: 'btn', type: 'button', 'data-key': 'pause', style: { flex: '1' }, onClick: () => A.setPaused(id, true) }, icon('pause', { size: 18 }), 'Pauze'),
         ),
+        h('a', { class: 'btn btn--ink btn--block', href: `#/serie/${id}/route` }, icon('route', { size: 18, width: 2.4, color: 'var(--yellow)' }), 'Leesroute'),
         metronBox(series),
         vols.length
           ? section(
@@ -316,43 +318,63 @@ function shortSeriesName(name, context) {
   return name;
 }
 
+function unlinkButton(series, link) {
+  const key = M.linkKeyOf(link);
+  return h(
+    'button',
+    {
+      class: 'btn btn--ghost',
+      type: 'button',
+      'data-key': `unlink-${key}`,
+      'aria-label': `Koppeling met ${link.name} ongedaan maken`,
+      onClick: () => {
+        const { remove, restore } = M.planUnlink(getState(), series.id, key);
+        const src = M.SOURCE_LABELS[link.source || 'metron'];
+        const msg =
+          `Koppeling met ${link.name} ongedaan maken?\n\n` +
+          `${remove.length} ${remove.length === 1 ? 'deel' : 'delen'} die ${src} heeft toegevoegd (en die je niet gelezen, gekocht of genoteerd hebt) worden weggehaald. ` +
+          `${restore.length} ${restore.length === 1 ? 'eigen deel krijgt' : 'eigen delen krijgen'} weer hun oude gegevens. Je leesstatus blijft staan.`;
+        if (!confirm(msg)) return;
+        dispatch((s) => M.unlinkMetron(s, series.id, undefined, key), { undoable: true });
+        toast(`Ontkoppeld: ${remove.length} ${remove.length === 1 ? 'deel' : 'delen'} weggehaald.`, { label: 'Ongedaan', run: () => { undo(); toast('Teruggezet.'); } });
+      },
+    },
+    'Ontkoppel',
+  );
+}
+
 function metronBox(series) {
-  if (!series.metron) {
+  const links = M.seriesLinks(series);
+  const vols = M.volumesOf(getState(), series.id);
+  const loose = vols.length > 0 && vols.every((v) => !v.number);
+  if (!links.length) {
     return h(
-      'a',
-      { class: 'btn btn--ghost btn--block', href: isConnected() ? `#/zoeken?serie=${series.id}` : '#/instellingen' },
-      M.volumesOf(getState(), series.id).length && M.volumesOf(getState(), series.id).every((v) => !v.number)
-        ? 'Koppel de hele serie online (bij losse boeken: liever per boek)'
-        : 'Koppel online (Metron of Comic Vine): covers, issues en nieuwe delen automatisch',
+      'div',
+      { class: 'stack' },
+      h(
+        'a',
+        { class: 'btn btn--ghost btn--block', href: isConnected() ? `#/zoeken?serie=${series.id}${loose ? '&extra=1' : ''}` : '#/instellingen' },
+        loose
+          ? 'Koppel online reeksen (bijv. Ultimates, X-Men): covers en nieuwe delen automatisch'
+          : 'Koppel online (Metron of Comic Vine): covers, issues en nieuwe delen automatisch',
+      ),
     );
   }
   return h(
     'div',
     { class: 'next-box', style: { borderStyle: 'dashed' } },
-    h('div', { class: 'kicker' }, `Gekoppeld aan ${M.SOURCE_LABELS[series.metron.source || 'metron']}`),
-    h('div', { class: 'sub' }, series.metron.name),
+    h('div', { class: 'kicker' }, links.length === 1 ? 'Gekoppelde reeks' : `${links.length} gekoppelde reeksen`),
+    links.map((l) =>
+      h('div', { class: 'link-row' }, h('div', { class: 'sub' }, h('b', {}, M.SOURCE_LABELS[l.source || 'metron']), ' · ', l.name), unlinkButton(series, l)),
+    ),
     h('p', { class: 'hint' }, 'Nieuwe delen verschijnen hier vanzelf; elke ochtend wordt gecontroleerd.'),
     isConnected()
-      ? h('a', { class: 'btn', href: `#/zoeken?serie=${series.id}&bijwerken=1` }, 'Nu bijwerken')
+      ? h(
+          'div',
+          { class: 'row' },
+          h('a', { class: 'btn', style: { flex: '1' }, href: `#/zoeken?serie=${series.id}&bijwerken=1` }, 'Nu bijwerken'),
+          h('a', { class: 'btn', style: { flex: '1' }, href: `#/zoeken?serie=${series.id}&extra=1` }, icon('plus', { size: 16, width: 3 }), 'Reeks'),
+        )
       : null,
-    h(
-      'button',
-      {
-        class: 'btn btn--ghost',
-        type: 'button',
-        'data-key': 'metron-unlink',
-        onClick: () => {
-          const { remove, restore } = M.planUnlink(getState(), series.id);
-          const msg =
-            `Koppeling met ${series.metron.name} ongedaan maken?\n\n` +
-            `${remove.length} ${remove.length === 1 ? 'deel' : 'delen'} die ${M.SOURCE_LABELS[series.metron.source || 'metron']} heeft toegevoegd (en die je niet gelezen, gekocht of genoteerd hebt) worden weggehaald. ` +
-            `${restore.length} ${restore.length === 1 ? 'eigen deel krijgt' : 'eigen delen krijgen'} weer hun oude gegevens. Je leesstatus blijft staan.`;
-          if (!confirm(msg)) return;
-          dispatch((s) => M.unlinkMetron(s, series.id), { undoable: true });
-          toast(`Ontkoppeld: ${remove.length} ${remove.length === 1 ? 'deel' : 'delen'} weggehaald.`, { label: 'Ongedaan', run: () => { undo(); toast('Teruggezet.'); } });
-        },
-      },
-      'Koppeling ongedaan maken',
-    ),
   );
 }

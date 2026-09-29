@@ -39,54 +39,63 @@ async function fetchDetails(items, ctx, label) {
   return out;
 }
 
-/** Haalt een Metron-serie binnen: in een bestaande serie (koppelen/bijwerken) of als nieuwe serie. */
-export async function importSeries(metronId, localSeriesId, ctx, { confirmed = false, source = 'metron' } = {}) {
+/** Korte reeksnaam binnen een verzamelserie: "Ultimate Comics X-Men" in "Ultimate Comics" → "X-Men". */
+function shortName(reeks, seriesTitle) {
+  const r = String(reeks || '').trim();
+  const t = String(seriesTitle || '').trim();
+  if (t && r.toLowerCase().startsWith(t.toLowerCase())) {
+    const rest = r.slice(t.length).replace(/^[\s:–-]+/, '').trim();
+    if (rest) return rest;
+  }
+  return r;
+}
+
+/**
+ * Haalt een online reeks binnen.
+ * mode 'link'    – koppelt een bestaande serie (of maakt een nieuwe) aan deze reeks
+ * mode 'extra'   – voegt de reeks toe aan een serie die al andere reeksen heeft (verzamelserie)
+ * mode 'refresh' – werkt een al gekoppelde reeks bij
+ */
+export async function importSeries(metronId, localSeriesId, ctx, { confirmed = false, source = 'metron', mode = 'link', silent = false } = {}) {
   ui.error = null;
-  ui.job = { label: 'Serie ophalen', done: 0, total: 1 };
+  ui.job = { label: 'Reeks ophalen', done: 0, total: 1 };
   ctx.rerender();
   try {
     const { series, items, detailed } = await api(`${base(source)}/series?id=${metronId}`, { timeout: 90_000 });
     const format = M.formatForSource(getState(), localSeriesId, source, series.type);
-    // Een verzamelserie (losse boeken zonder deelnummer, zoals "Ultimate Comics") hoort niet bij één online reeks.
+    const existing = localSeriesId ? M.getSeries(getState(), localSeriesId) : null;
+    // Een verzamelserie (losse boeken zonder deelnummer, zoals "Ultimate Comics") koppel je per reeks, niet als geheel.
     const own = localSeriesId ? M.volumesOf(getState(), localSeriesId) : [];
     const loose = own.length > 0 && own.every((v) => !v.number);
-    if (loose && !confirmed && !getState().series.find((s) => s.id === localSeriesId)?.metron) {
-      const ok = confirm(
-        `Deze serie bestaat uit losse boeken zonder deelnummer. Als je hem aan "${series.name}" koppelt, komen alle ${items.length} nummers van die reeks erbij.\n\n` +
-          'Beter: open elk boek en tik daar op "Koppel online".\n\nToch de hele serie koppelen?',
-      );
-      if (!ok) {
-        ui.job = null;
-        ctx.rerender();
-        return;
-      }
-    }
+    if (mode === 'link' && loose && !confirmed && !existing?.metron) mode = 'extra';
     const collected = source === 'comicvine' ? items.length <= 30 : format !== 'issue';
-    if (!collected && !confirmed && items.length > 12) {
+    if (mode !== 'refresh' && !collected && !confirmed && items.length > 12) {
       const ok = confirm(
-        `"${series.name}" is een serie met ${items.length} losse nummers, geen trades.\n\n` +
-          `Elk nummer wordt dan een apart deel in je kast. Lees je trades of hardcovers, kies dan een serie met "Trade Paperback" of "Hardcover".\n\nToch doorgaan?`,
+        `"${series.name}" is een reeks met ${items.length} losse nummers, geen trades.\n\n` +
+          `Elk nummer wordt dan een apart deel in je kast. Lees je trades of hardcovers, kies dan een reeks met "Trade Paperback" of "Hardcover".\n\nToch doorgaan?`,
       );
       if (!ok) {
         ui.job = null;
         ctx.rerender();
-        return;
+        return null;
       }
     }
     // Bij verzamelde edities zijn de details nodig (titel, welke issues erin zitten).
     const needDetails = collected && !detailed && items.length;
     const details = needDetails ? await fetchDetails(items.slice(0, 60), ctx, 'Delen ophalen') : items;
     const all = needDetails ? [...details, ...items.slice(60)] : items;
-    const existing = localSeriesId ? M.getSeries(getState(), localSeriesId) : null;
-    const linkedAt = existing?.metron?.id === series.id && existing.metron.linkedAt ? existing.metron.linkedAt : new Date().toISOString();
+
+    const key = M.linkKeyOf({ id: series.id, source });
+    const prior = existing ? M.seriesLinks(existing).find((l) => M.linkKeyOf(l) === key) : null;
     const label = source === 'comicvine' ? `${series.name}${series.year ? ` (${series.year})` : ''}` : `${series.name}${series.type ? ` (${series.type})` : ''}`;
-    const metron = { id: series.id, name: label, type: series.type, linkedAt, source };
+    const umbrella = prior ? prior.umbrella || '' : mode === 'extra' ? shortName(series.name, existing?.title) : '';
+    const link = { id: series.id, name: label, type: series.type, linkedAt: prior?.linkedAt || new Date().toISOString(), source, umbrella };
 
     const result = dispatch((s) => {
       let st = s;
       let id = localSeriesId;
       if (id && M.getSeries(st, id)) {
-        st = M.updateSeries(st, id, { metron });
+        if (!prior) st = mode === 'extra' ? M.addLink(st, id, link) : M.updateSeries(st, id, { metron: link });
       } else {
         const publisher = M.publisherFromMetron(series.publisher);
         const r = M.addSeries(st, {
@@ -95,21 +104,66 @@ export async function importSeries(metronId, localSeriesId, ctx, { confirmed = f
           line: series.imprint || '',
           years: series.year ? `${series.year}–${series.yearEnd || ''}` : '',
           color: COLOR_BY_PUBLISHER[publisher] || 'ink',
-          metron,
+          metron: link,
         });
         st = r.state;
         id = r.id;
       }
-      const applied = M.applyMetronItems(st, id, all, format);
+      const applied = M.applyMetronItems(st, id, all, format, { linkKey: key, umbrella });
       return { state: applied.state, id, added: applied.added.length, updated: applied.updated.length };
     }, { undoable: true });
     ui.job = null;
-    const parts = [];
-    if (result.added) parts.push(`${result.added} ${result.added === 1 ? 'deel' : 'delen'} toegevoegd`);
-    if (result.updated) parts.push(`${result.updated} bijgewerkt`);
-    toast(parts.length ? `${parts.join(', ')}.` : 'Alles was al up-to-date.', parts.length ? { label: 'Ongedaan', run: () => { undo(); toast('Teruggezet.'); } } : undefined);
+    if (!silent) {
+      const parts = [];
+      if (result.added) parts.push(`${result.added} ${result.added === 1 ? 'deel' : 'delen'} toegevoegd`);
+      if (result.updated) parts.push(`${result.updated} bijgewerkt`);
+      toast(parts.length ? `${parts.join(', ')}.` : 'Alles was al up-to-date.', parts.length ? { label: 'Ongedaan', run: () => { undo(); toast('Teruggezet.'); } } : undefined);
+      ui.key = '';
+      location.replace(`#/serie/${result.id}`);
+    }
+    return result;
+  } catch (err) {
+    ui.job = null;
+    ui.error = err.message;
+    ctx.rerender();
+    return null;
+  }
+}
+
+/** Werkt alle gekoppelde reeksen van een serie bij. */
+async function refreshAll(series, ctx) {
+  const links = M.seriesLinks(series);
+  let added = 0;
+  let updated = 0;
+  for (const [i, l] of links.entries()) {
+    const r = await importSeries(l.id, series.id, ctx, { confirmed: true, source: l.source || 'metron', mode: 'refresh', silent: true });
+    if (!r) return;
+    added += r.added;
+    updated += r.updated;
+    ui.job = { label: 'Reeksen bijwerken', done: i + 1, total: links.length };
+  }
+  ui.job = null;
+  const parts = [];
+  if (added) parts.push(`${added} ${added === 1 ? 'deel' : 'delen'} toegevoegd`);
+  if (updated) parts.push(`${updated} bijgewerkt`);
+  toast(parts.length ? `${parts.join(', ')}.` : 'Alles was al up-to-date.');
+  ui.key = '';
+  location.replace(`#/serie/${series.id}`);
+}
+
+/** "+ Volume → Zoek online": voegt één boek toe aan een serie. */
+async function addBook(seriesId, item, reeks, ctx, source) {
+  ui.error = null;
+  ui.job = { label: 'Boek ophalen', done: 0, total: 1 };
+  ctx.rerender();
+  try {
+    const full = source === 'comicvine' ? item : (await api(`/api/metron/issues?ids=${item.id}`)).issues[0];
+    const format = source === 'comicvine' ? M.formatForSource(getState(), seriesId, source, '') : M.formatFromMetronType(reeks.type);
+    const r = dispatch((s) => M.addVolumeFromSource(s, seriesId, full, format, { reeksName: reeks.name }), { undoable: true });
+    ui.job = null;
     ui.key = '';
-    location.replace(`#/serie/${result.id}`);
+    toast('Boek toegevoegd.', { label: 'Ongedaan', run: () => { undo(); toast('Teruggezet.'); } });
+    location.replace(`#/volume/${r.id}`);
   } catch (err) {
     ui.job = null;
     ui.error = err.message;
@@ -162,17 +216,19 @@ async function runSearch(ctx) {
   ctx.rerender();
 }
 
-async function openForVolume(result, volumeId, ctx) {
+/** Voor één boek: koppelen aan een bestaand deel (volumeId) of toevoegen aan een serie (addTo). */
+async function openForBook(result, { volumeId, addTo }, ctx) {
   ui.loading = true;
   ctx.rerender();
   try {
     const { series, items } = await api(`${base(ui.source)}/series?id=${result.id}`, { timeout: 90_000 });
     ui.loading = false;
     if (items.length === 1) {
-      await linkVolume(volumeId, items[0], series.type, ctx, ui.source);
+      if (addTo) await addBook(addTo, items[0], series, ctx, ui.source);
+      else await linkVolume(volumeId, items[0], series.type, ctx, ui.source);
       return;
     }
-    ui.pick = { series, items, source: ui.source };
+    ui.pick = { series, items, source: ui.source, volumeId, addTo };
   } catch (err) {
     ui.loading = false;
     ui.error = err.message;
@@ -198,19 +254,22 @@ export function metronView(_params, ctx, query) {
   const volumeId = query.get('volume');
   const localSeries = seriesId ? M.getSeries(state, seriesId) : null;
   const localVolume = volumeId ? M.getVolume(state, volumeId) : null;
+  const addTo = query.get('toevoegen') && M.getSeries(state, query.get('toevoegen')) ? query.get('toevoegen') : null;
+  const addSeries = addTo ? M.getSeries(state, addTo) : null;
   const refresh = query.get('bijwerken') === '1' && localSeries?.metron;
-  const key = `${seriesId || ''}|${volumeId || ''}|${refresh ? 'r' : ''}`;
+  const extra = query.get('extra') === '1' && !!localSeries;
+  const key = `${seriesId || ''}|${volumeId || ''}|${addTo || ''}|${refresh ? 'r' : ''}|${extra ? 'x' : ''}`;
   if (ui.key !== key) {
-    const guess = localVolume ? localVolume.title : localSeries ? localSeries.title : '';
+    const guess = localVolume ? localVolume.title : addSeries ? '' : localSeries && !extra ? localSeries.title : '';
     reset(key, guess);
-    ui.seriesId = seriesId;
-    if (refresh) ui.source = localSeries.metron.source || 'metron';
-    if (refresh && isConnected()) queueMicrotask(() => importSeries(localSeries.metron.id, localSeries.id, ctx, { confirmed: true, source: ui.source }));
+    ui.seriesId = extra || addTo ? null : seriesId;
+    if (addTo && M.seriesLinks(addSeries)[0]?.source === 'comicvine') ui.source = 'comicvine';
+    if (refresh && isConnected()) queueMicrotask(() => refreshAll(localSeries, ctx));
     else if (guess && isConnected()) queueMicrotask(() => runSearch(ctx));
   }
 
-  const back = localVolume ? `#/volume/${localVolume.id}` : localSeries ? `#/serie/${localSeries.id}` : '#/kast';
-  const label = refresh ? 'Bijwerken' : localVolume ? 'Boek koppelen' : localSeries ? 'Serie koppelen' : 'Serie zoeken';
+  const back = localVolume ? `#/volume/${localVolume.id}` : addSeries ? `#/serie/${addSeries.id}` : localSeries ? `#/serie/${localSeries.id}` : '#/kast';
+  const label = refresh ? 'Bijwerken' : localVolume ? 'Boek koppelen' : addSeries ? 'Boek toevoegen' : extra ? 'Reeks toevoegen' : localSeries ? 'Serie koppelen' : 'Serie zoeken';
 
   if (!isConnected()) {
     return {
@@ -243,6 +302,10 @@ export function metronView(_params, ctx, query) {
   const cv = ui.source === 'comicvine';
   const intro = localVolume
     ? `Zoek het boek "${localVolume.title}". Je leesstatus en gelezen issues blijven gewoon staan.`
+    : addSeries
+      ? `Zoek een boek om aan "${addSeries.title}" toe te voegen. Kies de reeks en daarna het boek; cover, titel en issues komen vanzelf mee.`
+    : extra
+      ? `Zoek een reeks die bij "${localSeries.title}" hoort, bijv. "Ultimate Comics Ultimates" of "Ultimate Comics X-Men". Alle delen van die reeks komen in deze serie, en nieuwe delen verschijnen vanzelf. Je kunt meerdere reeksen toevoegen.`
     : localSeries
       ? cv
         ? `Kies de Comic Vine-reeks die bij "${localSeries.title}" hoort: dezelfde uitgever en jaren, met ongeveer evenveel nummers als jij delen hebt. Je leesstatus blijft staan.`
@@ -288,7 +351,14 @@ export function metronView(_params, ctx, query) {
         ui.pick.items.map((item) =>
           h(
             'button',
-            { class: 'vol-row', type: 'button', style: { textAlign: 'left', width: '100%' }, onClick: () => linkVolume(localVolume.id, item, ui.pick.series.type, ctx, ui.pick.source) },
+            {
+              class: 'vol-row',
+              type: 'button',
+              style: { textAlign: 'left', width: '100%' },
+              onClick: () => (ui.pick.addTo
+                ? addBook(ui.pick.addTo, item, ui.pick.series, ctx, ui.pick.source)
+                : linkVolume(ui.pick.volumeId, item, ui.pick.series.type, ctx, ui.pick.source)),
+            },
             item.image ? h('img', { class: 'cover cover--sm', src: item.image, alt: '', loading: 'lazy' }) : h('div', { class: 'cover cover--sm dots-light', style: { backgroundColor: 'var(--ink)' } }, item.number),
             h('div', { class: 'vol-row__body' }, h('div', { class: 'vol-row__title' }, `#${item.number}${item.title ? ` · ${item.title}` : ''}`), h('div', { class: 'sub' }, item.store_date || '')),
             icon('chevron', { width: 3 }),
@@ -310,7 +380,9 @@ export function metronView(_params, ctx, query) {
                 type: 'button',
                 style: { textAlign: 'left', width: '100%' },
                 'data-key': `res-${r.id}`,
-                onClick: () => (localVolume ? openForVolume(r, localVolume.id, ctx) : importSeries(r.id, localSeries?.id, ctx, { source: ui.source })),
+                onClick: () => (localVolume || addSeries
+                  ? openForBook(r, { volumeId: localVolume?.id, addTo: addSeries?.id }, ctx)
+                  : importSeries(r.id, localSeries?.id, ctx, { source: ui.source, mode: extra ? 'extra' : 'link' })),
               },
               h(
                 'div',
@@ -377,7 +449,9 @@ export function metronView(_params, ctx, query) {
         ),
         ui.error ? h('div', { class: 'error-box', role: 'alert' }, ui.error) : null,
         ui.job ? progressCard() : list,
-        localVolume || localSeries ? null : h('a', { class: 'btn btn--ghost btn--block', href: '#/serie/nieuw' }, 'Niet gevonden? Handmatig toevoegen'),
+        localVolume || localSeries ? null
+          : addSeries ? h('a', { class: 'btn btn--ghost btn--block', href: `#/volume/nieuw?serie=${addSeries.id}&handmatig=1` }, 'Niet gevonden? Handmatig invullen')
+          : h('a', { class: 'btn btn--ghost btn--block', href: '#/serie/nieuw' }, 'Niet gevonden? Handmatig toevoegen'),
       ),
     ],
   };

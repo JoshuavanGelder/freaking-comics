@@ -219,3 +219,103 @@ test('unlinkMetron: oude koppeling zonder markeringen (zoals vanochtend)', () =>
   assert.deepEqual(vols.map((v) => v.title), ['Move Forward', 'Rogues Revolution', 'Gorilla Warfare', 'Reverse', 'History Lessons', 'Out of Time', 'Savage World', 'Zoom', 'Full Stop']);
   assert.ok(vols.every((v) => v.format === 'trade' && v.metronId == null && v.cover == null));
 });
+
+test('leesroute: zijverhalen, + Toch lezen, alleen hoofdverhaal', () => {
+  let s = seedState();
+  const ult = s.series.find((x) => x.title === 'Ultimate Comics');
+  const r = M.applyRouteTemplate(s, ult.id, M.ULTIMATE_ROUTE, T3);
+  s = r.state;
+  assert.equal(r.added, 10);
+  assert.equal(r.matched, 2);
+  const vols = M.volumesOf(s, ult.id);
+  assert.equal(vols.length, 12);
+  assert.equal(vols[0].title, 'Ultimate Fallout');
+  assert.equal(vols[6].title, 'Divided We Fall, United We Stand');
+  assert.equal(vols[6].readStatus, 'reading');
+  assert.equal(vols[6].issues.length, 18);
+  const iron = vols.find((v) => v.title.includes('Iron Man'));
+  assert.equal(iron.kind, 'side');
+  assert.equal(iron.readStatus, 'read');
+  // Route: 3 events + 4 hoofdverhaal + Iron Man (gelezen) = 8
+  assert.equal(M.routeVolumes(s, ult.id).length, 8);
+  const hawkeye = vols.find((v) => v.title.includes('Hawkeye'));
+  s = M.setInRoute(s, hawkeye.id, true, T3);
+  assert.equal(M.routeVolumes(s, ult.id).length, 9);
+  s = M.setMainOnly(s, ult.id, false, T3);
+  assert.equal(M.routeVolumes(s, ult.id).length, 12);
+  s = M.setMainOnly(s, ult.id, true, T3);
+  // Bladwijzer: DWF (bezig)
+  assert.equal(M.nextUp(s, ult.id).title, 'Divided We Fall, United We Stand');
+  s = M.setReadStatus(s, vols[6].id, 'read', T3);
+  // Daarna: Wolverine is zijverhaal (niet in route) → vanaf #19
+  assert.equal(M.nextUp(s, ult.id).title, 'Ultimates, X-Men en Spider-Man vanaf #19');
+  // Nogmaals toepassen voegt niets dubbel toe
+  assert.equal(M.applyRouteTemplate(s, ult.id, M.ULTIMATE_ROUTE, T3).added, 0);
+});
+
+test('moveVolume wisselt twee delen van plek', () => {
+  let s = seedState();
+  const flash = s.series.find((x) => x.title === 'The Flash');
+  const [v1, v2] = M.volumesOf(s, flash.id);
+  s = M.moveVolume(s, v2.id, -1, T3);
+  const after = M.volumesOf(s, flash.id);
+  assert.equal(after[0].id, v2.id);
+  assert.equal(after[1].id, v1.id);
+});
+
+test('meerdere reeksen: toevoegen, apart ontkoppelen', () => {
+  let s = seedState();
+  const ult = s.series.find((x) => x.title === 'Ultimate Comics');
+  const a = { id: 10, name: 'Ultimate Comics Ultimates (2011)', type: 'Comic Vine', source: 'comicvine' };
+  const b = { id: 20, name: 'Ultimate Comics X-Men (2011)', type: 'Comic Vine', source: 'comicvine' };
+  s = M.addLink(s, ult.id, a, T3);
+  s = M.applyMetronItems(s, ult.id, [{ id: 1, number: '1', title: 'The Republic Is Burning' }, { id: 2, number: '2', title: 'Two' }], 'trade', { linkKey: 'comicvine:10', umbrella: 'Ultimates', now: T3 }).state;
+  s = M.addLink(s, ult.id, b, T3);
+  s = M.applyMetronItems(s, ult.id, [{ id: 1, number: '1', title: 'Blood' }], 'trade', { linkKey: 'comicvine:20', umbrella: 'X-Men', now: T3 }).state;
+  assert.equal(M.seriesLinks(M.getSeries(s, ult.id)).length, 2);
+  const titles = M.volumesOf(s, ult.id).map((v) => v.title);
+  assert.ok(titles.includes('Ultimates Vol. 1: The Republic Is Burning'));
+  assert.ok(titles.includes('X-Men Vol. 1: Blood'));
+  assert.equal(M.volumesOf(s, ult.id).length, 5);
+  // Alleen X-Men ontkoppelen
+  s = M.unlinkMetron(s, ult.id, T3, 'comicvine:20');
+  assert.equal(M.volumesOf(s, ult.id).length, 4);
+  const left = M.seriesLinks(M.getSeries(s, ult.id));
+  assert.deepEqual(left.map((l) => l.id), [10]);
+  // Nu de eerste: alles weg wat die toevoegde, eigen boeken blijven
+  s = M.unlinkMetron(s, ult.id, T3, 'comicvine:10');
+  assert.equal(M.volumesOf(s, ult.id).length, 2);
+  assert.equal(M.seriesLinks(M.getSeries(s, ult.id)).length, 0);
+});
+
+test('addVolumeFromSource: los boek met cover en issues', () => {
+  let s = seedState();
+  const ult = s.series.find((x) => x.title === 'Ultimate Comics');
+  const r = M.addVolumeFromSource(s, ult.id, { id: 5, number: '1', title: '', image: 'https://x/y.jpg', reprints: [{ id: 1, issue: 'Hunger #1' }] }, 'trade', { reeksName: 'Hunger', now: T3 });
+  const v = M.getVolume(r.state, r.id);
+  assert.equal(v.title, 'Hunger');
+  assert.equal(v.cover, 'https://x/y.jpg');
+  assert.equal(v.metronId, 5);
+  assert.equal(v.fromMetron, false);
+  assert.equal(v.issues.length, 1);
+});
+
+test('reeks in leesroute vervangt het algemene routedeel en slaat dubbele inhoud over', () => {
+  let s = seedState();
+  const ult = s.series.find((x) => x.title === 'Ultimate Comics');
+  s = M.applyRouteTemplate(s, ult.id, M.ULTIMATE_ROUTE, T3).state;
+  const posGeneric = M.volumesOf(s, ult.id).find((v) => v.title === 'Ultimate Comics X-Men Vol. 1–2').position;
+  const items = [
+    { id: 1, number: '1', title: 'Blood', reprints: [1, 2, 3, 4, 5, 6].map((n) => ({ issue: `Ultimate Comics X-Men #${n}` })) },
+    { id: 2, number: '2', title: 'Divided We Fall', reprints: [13, 14, 15, 16, 17, 18].map((n) => ({ issue: `Ultimate Comics X-Men #${n}` })) },
+    { id: 3, number: '3', title: 'Two', reprints: [7, 8, 9, 10, 11, 12].map((n) => ({ issue: `Ultimate Comics X-Men #${n}` })) },
+  ];
+  const r = M.applyMetronItems(s, ult.id, items, 'trade', { linkKey: 'comicvine:44', umbrella: 'X-Men', now: T3 });
+  s = r.state;
+  const titles = M.volumesOf(s, ult.id).map((v) => v.title);
+  assert.equal(r.added.length, 2); // "Divided We Fall" zit al in de hardcover
+  assert.ok(!titles.includes('Ultimate Comics X-Men Vol. 1–2'));
+  const blood = M.volumesOf(s, ult.id).find((v) => v.title === 'X-Men Vol. 1: Blood');
+  assert.ok(blood.position > posGeneric && blood.position < posGeneric + 1);
+  assert.equal(titles.indexOf('X-Men Vol. 1: Blood') + 1, titles.indexOf('X-Men Vol. 3: Two'));
+});

@@ -169,7 +169,8 @@ export function volumeFormView({ id } = {}, _ctx, query = new URLSearchParams())
   });
 
   const format = h('select', { class: 'select', id: 'f-format', name: 'format' }, Object.entries(M.FORMATS).map(([k, label]) => h('option', { value: k, selected: k === (existing?.format || 'trade') }, label)));
-  const isSide = h('input', { type: 'checkbox', id: 'f-side', name: 'isSide', checked: !!existing?.isSide });
+  const currentKind = existing?.kind || (existing?.isSide ? 'side' : 'main');
+  const kind = h('select', { class: 'select', id: 'f-kind', name: 'kind' }, Object.entries(M.KINDS).map(([k, label]) => h('option', { value: k, selected: k === currentKind }, label)));
   const readStatus = h('select', { class: 'select', id: 'f-read', name: 'readStatus' }, M.READ_STATUS.map((k) => h('option', { value: k, selected: k === (existing?.readStatus || 'unread') }, M.READ_LABELS[k])));
   const ownership = h('select', { class: 'select', id: 'f-own', name: 'ownership' }, M.OWNERSHIP.map((k) => h('option', { value: k, selected: k === (existing?.ownership || 'none') }, M.OWN_LABELS[k])));
 
@@ -226,7 +227,7 @@ export function volumeFormView({ id } = {}, _ctx, query = new URLSearchParams())
           number: number.value,
           position: position.value === '' ? M.nextPosition(getState(), seriesSel.value) : Number(position.value),
           format: format.value,
-          isSide: isSide.checked,
+          kind: kind.value,
           // Alleen doorgeven als je hem zelf veranderde, anders volgt hij de issues.
           readStatus: existing && readStatus.value === existing.readStatus ? undefined : readStatus.value,
           ownership: ownership.value,
@@ -252,6 +253,13 @@ export function volumeFormView({ id } = {}, _ctx, query = new URLSearchParams())
       },
     },
     firstOfSeries ? h('div', { class: 'bubble' }, h('p', {}, 'Top! Voeg nu het eerste deel toe. Alleen de titel is nodig.')) : null,
+    !existing && isConnected() && query.get('handmatig') !== '1'
+      ? h(
+          'a',
+          { class: 'btn btn--yellow btn--block', href: `#/zoeken?toevoegen=${seriesSel.value}`, onClick: (e) => { e.currentTarget.href = `#/zoeken?toevoegen=${seriesSel.value}`; } },
+          'Zoek dit boek online (vult alles automatisch in)',
+        )
+      : null,
     err,
     h(
       'div',
@@ -263,7 +271,7 @@ export function volumeFormView({ id } = {}, _ctx, query = new URLSearchParams())
     field('Titel', title),
     h('div', { class: 'field-row' }, field('Deelnummer', number), field('Plek in de serie', position)),
     h('p', { class: 'hint', style: { marginTop: '-10px' } }, 'De plek bepaalt de volgorde. Een tie-in tussen deel 4 en 5? Kies plek 4.5.'),
-    h('label', { class: 'check', for: 'f-side' }, isSide, h('span', {}, h('b', {}, 'Tussendoor (zijverhaal). '), 'Telt niet mee voor "volgende deel", tenzij je het aan het lezen bent.')),
+    field('Soort', kind, 'Een zijverhaal telt niet mee voor "volgende deel", tenzij je het leest of in je leesroute zet.'),
     field('Formaat', format),
     h('div', { class: 'field' }, h('label', { for: 'f-issues' }, 'Issues erin'), issues, preview),
     h('div', { class: 'field-row' }, field('Leesstatus', readStatus), field('In de kast', ownership)),

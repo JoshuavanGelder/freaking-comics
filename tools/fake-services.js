@@ -42,6 +42,8 @@ const CV_VOLUMES = [
   { id: 1111, name: 'The Flash', start_year: '2012', publisher: { name: 'DC Comics' }, count_of_issues: 9 },
   { id: 2222, name: 'The Flash', start_year: '2011', publisher: { name: 'DC Comics' }, count_of_issues: 52 },
   { id: 3333, name: 'Ultimate Comics: Divided We Fall, United We Stand', start_year: '2013', publisher: { name: 'Marvel' }, count_of_issues: 1 },
+  { id: 4444, name: 'Ultimate Comics X-Men', start_year: '2012', publisher: { name: 'Marvel' }, count_of_issues: 3 },
+  { id: 5555, name: 'Hunger', start_year: '2013', publisher: { name: 'Marvel' }, count_of_issues: 1 },
 ];
 const CV_ISSUES = [];
 FLASH_TITLES.forEach((title, i) => {
@@ -51,6 +53,8 @@ FLASH_TITLES.forEach((title, i) => {
     description: `<p>The Speedster returns! <em>Collects THE FLASH #${first}-${last}${i === 5 ? ' and THE FLASH ANNUAL #3' : ''}.</em></p>` });
 });
 for (let k = 1; k <= 52; k += 1) CV_ISSUES.push({ id: 5000 + k, volume: 2222, issue_number: String(k), name: '', cover_date: '2012-01-01', description: '' });
+['Blood', 'Divided We Fall', 'Reservation X'].forEach((name, i) => CV_ISSUES.push({ id: 9100 + i, volume: 4444, issue_number: String(i + 1), name, cover_date: `201${2 + i}-03-01`, description: `<p>Collects Ultimate Comics X-Men #${i * 6 + 1}-${i * 6 + 6}.</p>` }));
+CV_ISSUES.push({ id: 9200, volume: 5555, issue_number: '1', name: '', cover_date: '2013-10-01', description: '<p>Collects Hunger #1-4.</p>' });
 CV_ISSUES.push({ id: 9001, volume: 3333, issue_number: '1', name: '', cover_date: '2013-01-01', description: '<p>Collects Ultimate Comics Ultimates #13-18, Ultimate Comics X-Men #13-18, Ultimate Comics Spider-Man #13-18.</p>' });
 
 function cvIssue(i) {

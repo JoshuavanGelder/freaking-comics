@@ -122,11 +122,28 @@ export function nextIssue(v) {
  * 3. Anders het eerste ongelezen hoofddeel (als je eerder iets oversloeg).
  * Zijverhalen ("tussendoor") tellen niet mee, tenzij je ze aan het lezen bent.
  */
+export const KINDS = { main: 'Hoofdverhaal', side: 'Zijverhaal', event: 'Event' };
+
+/**
+ * Hoort dit deel bij jouw route? Hoofdverhaal en events altijd; zijverhalen alleen als je ze
+ * gelezen hebt, leest, zelf toevoegde ("+ Toch lezen"), of als "Alleen hoofdverhaal" uit staat.
+ */
+export function inRoute(series, v) {
+  if (!v.isSide) return true;
+  if (series && series.mainOnly === false) return true;
+  return v.inRoute || v.readStatus !== 'unread';
+}
+
+export function routeVolumes(state, seriesId) {
+  const series = getSeries(state, seriesId);
+  return volumesOf(state, seriesId).filter((v) => inRoute(series, v));
+}
+
 export function nextUp(state, seriesId) {
   const vols = volumesOf(state, seriesId);
   const reading = vols.find((v) => v.readStatus === 'reading');
   if (reading) return reading;
-  const main = vols.filter((v) => !v.isSide);
+  const main = routeVolumes(state, seriesId);
   let lastRead = -1;
   main.forEach((v, i) => {
     if (v.readStatus === 'read') lastRead = i;
@@ -145,12 +162,13 @@ export function followingVolume(state, volumeId) {
   const vols = volumesOf(state, v.seriesId);
   const idx = vols.findIndex((x) => x.id === v.id);
   const rest = vols.slice(idx + 1);
-  return rest.find((x) => !x.isSide) || rest[0] || null;
+  const series = getSeries(state, v.seriesId);
+  return rest.find((x) => inRoute(series, x)) || rest[0] || null;
 }
 
 export function seriesStats(state, seriesId) {
   const vols = volumesOf(state, seriesId);
-  const main = vols.filter((v) => !v.isSide);
+  const main = routeVolumes(state, seriesId);
   return {
     total: vols.length,
     main: main.length,
@@ -166,7 +184,7 @@ export function seriesStats(state, seriesId) {
 export function seriesPhase(state, series) {
   if (series.paused) return 'paused';
   const vols = volumesOf(state, series.id);
-  const main = vols.filter((v) => !v.isSide);
+  const main = routeVolumes(state, series.id);
   if (main.length && main.every((v) => v.readStatus === 'read')) return 'done';
   if (vols.some((v) => v.readStatus !== 'unread')) return 'active';
   return 'new';
@@ -367,6 +385,8 @@ function cleanMetronSeries(m) {
     type: String(m.type || ''),
     linkedAt: typeof m.linkedAt === 'string' ? m.linkedAt : null,
     source: m.source === 'comicvine' ? 'comicvine' : 'metron',
+    // Bij een verzamelserie: korte reeksnaam voor de titels ("Ultimates Vol. 1: …").
+    umbrella: typeof m.umbrella === 'string' ? m.umbrella : '',
   };
 }
 
@@ -379,6 +399,8 @@ function cleanSeriesData(data) {
     years: String(data.years || '').trim(),
     color,
     metron: cleanMetronSeries(data.metron),
+    links: Array.isArray(data.links) ? data.links.map(cleanMetronSeries).filter(Boolean) : [],
+    mainOnly: data.mainOnly !== false,
   };
 }
 
@@ -432,7 +454,10 @@ function cleanVolumeData(data) {
     number: String(data.number ?? '').trim(),
     position: Number.isFinite(position) ? position : 0,
     format: data.format in FORMATS ? data.format : 'trade',
-    isSide: !!data.isSide,
+    kind: data.kind in KINDS ? data.kind : data.isSide ? 'side' : 'main',
+    isSide: data.kind in KINDS ? data.kind === 'side' : !!data.isSide,
+    inRoute: !!data.inRoute,
+    linkKey: typeof data.linkKey === 'string' ? data.linkKey : null,
     ownership: OWNERSHIP.includes(data.ownership) ? data.ownership : 'none',
     note: String(data.note || '').trim(),
     cover: cleanUrl(data.cover),
@@ -745,7 +770,7 @@ export function volumeDataFromMetron(item, format) {
  * @param {object} opts { markNew: nieuwe delen krijgen het label "nieuw" }
  * @returns {{ state, added: string[], updated: string[] }}
  */
-export function applyMetronItems(state, seriesId, items, format, { markNew = false, now = nowIso() } = {}) {
+export function applyMetronItems(state, seriesId, items, format, { markNew = false, now = nowIso(), linkKey = null, umbrella = '' } = {}) {
   let next = state;
   const added = [];
   const updated = [];
@@ -756,17 +781,47 @@ export function applyMetronItems(state, seriesId, items, format, { markNew = fal
     return String(a.number).localeCompare(String(b.number));
   });
 
+  const keysOf = (issues) => new Set((issues || []).map(issueKey));
+  const untouchedGeneric = (v) => v.metronId == null && v.readStatus === 'unread' && v.ownership === 'none' && !v.note && !v.linkKey;
+  const coveredGenerics = new Map(); // id → Set van issues die door nieuwe delen gedekt zijn
+  let slot = 0;
+
   for (const item of sorted) {
     const data = volumeDataFromMetron(item, format);
+    let insertAt = null;
+    if (umbrella && data.issues.length) {
+      const mine = keysOf(data.issues);
+      const vols0 = volumesOf(next, seriesId).filter((v) => v.linkKey !== linkKey || !linkKey);
+      // Staat de inhoud al in je kast (bijv. in een hardcover die meer bundelt)? Dan niet dubbel toevoegen.
+      const already = vols0.find((v) => v.metronId !== data.metronId && !untouchedGeneric(v) && v.issues.length && [...mine].every((k) => keysOf(v.issues).has(k)));
+      if (already && !vols0.some((v) => v.metronId === data.metronId)) continue;
+      // Een algemeen deel uit de leesroute ("X-Men Vol. 1–2") maakt plaats voor de echte delen.
+      const generic = vols0.find((v) => untouchedGeneric(v) && v.issues.some((i) => mine.has(issueKey(i))));
+      if (generic) {
+        slot += 1;
+        insertAt = generic.position + slot / 100;
+        const cov = coveredGenerics.get(generic.id) || new Set();
+        for (const k of mine) cov.add(k);
+        coveredGenerics.set(generic.id, cov);
+      }
+    }
+    if (umbrella) {
+      // In een verzamelserie met meerdere reeksen: titel met reeksnaam, zonder los deelnummer.
+      const t = String(item.title || '').trim();
+      data.title = t ? `${umbrella} Vol. ${data.number}: ${t}` : `${umbrella} #${data.number}`;
+      data.number = '';
+    }
     const vols = volumesOf(next, seriesId);
+    const sameLink = (v) => !linkKey || !v.linkKey || v.linkKey === linkKey;
     const match =
-      vols.find((v) => v.metronId === data.metronId) ||
+      vols.find((v) => v.metronId === data.metronId && sameLink(v)) ||
       vols.find((v) => v.metronId == null && !v.isSide && sameNumber(v.number, data.number)) ||
       vols.find((v) => v.metronId == null && data.title && normTitle(v.title) === normTitle(data.title));
 
     if (match) {
       const patch = {
         preMetron: match.preMetron || (match.metronId == null ? { format: match.format, cover: match.cover, storeDate: match.storeDate } : null),
+        linkKey: linkKey || match.linkKey || null,
         metronId: data.metronId,
         cover: data.cover || match.cover,
         storeDate: data.storeDate || match.storeDate,
@@ -779,6 +834,7 @@ export function applyMetronItems(state, seriesId, items, format, { markNew = fal
       if (match.readStatus === 'read') issues = issues.map((i) => (i.read ? i : { ...i, read: true }));
       const changed =
         patch.metronId !== match.metronId ||
+        patch.linkKey !== match.linkKey ||
         patch.cover !== match.cover ||
         patch.storeDate !== match.storeDate ||
         patch.title !== match.title ||
@@ -794,10 +850,19 @@ export function applyMetronItems(state, seriesId, items, format, { markNew = fal
     }
 
     const num = Number(data.number);
-    const position = Number.isFinite(num) && !vols.some((v) => v.position === num) ? num : nextPosition(next, seriesId);
-    const r = addVolume(next, { ...data, seriesId, position, isNew: markNew, fromMetron: true }, now);
+    const position = insertAt != null
+      ? insertAt
+      : !umbrella && Number.isFinite(num) && data.number !== '' && !vols.some((v) => v.position === num) ? num : nextPosition(next, seriesId);
+    const r = addVolume(next, { ...data, seriesId, position, isNew: markNew, fromMetron: true, linkKey }, now);
     next = r.state;
     added.push(r.id);
+  }
+  // Algemene routedelen die nu helemaal door echte delen gedekt zijn, verdwijnen.
+  for (const [id, cov] of coveredGenerics) {
+    const v = getVolume(next, id);
+    if (v && v.issues.every((i) => cov.has(issueKey(i)))) {
+      next = { ...next, volumes: next.volumes.filter((x) => x.id !== id), deleted: withDeleted(next, [id], now) };
+    }
   }
   return { state: next, added, updated };
 }
@@ -883,10 +948,13 @@ export function adoptState(current, target, now = nowIso()) {
  * niet hebt aangeraakt, en zet je eigen delen terug (formaat, cover, datum).
  * Delen die je las, bezit, op je verlanglijst zette of van een notitie voorzag blijven altijd staan.
  */
-export function planUnlink(state, seriesId) {
+export function planUnlink(state, seriesId, linkKey = null) {
   const series = getSeries(state, seriesId);
   if (!series) return { remove: [], restore: [] };
-  const vols = volumesOf(state, seriesId);
+  const primaryKey = linkKeyOf(series.metron);
+  // Per reeks: alleen de delen van die reeks (oude delen zonder markering horen bij de eerste koppeling).
+  const ofLink = (v) => !linkKey || v.linkKey === linkKey || (!v.linkKey && linkKey === primaryKey);
+  const vols = volumesOf(state, seriesId).filter(ofLink);
   const untouched = (v) => v.readStatus === 'unread' && v.ownership === 'none' && !v.note && !v.issues.some((i) => i.read);
   // Oudere koppelingen (zonder fromMetron-markering): alles wat na je laatste leesactie is aangemaakt.
   const cutoff = series.metron?.linkedAt || series.lastActivityAt;
@@ -896,20 +964,25 @@ export function planUnlink(state, seriesId) {
   return { remove, restore };
 }
 
-export function unlinkMetron(state, seriesId, now = nowIso()) {
-  const { remove, restore } = planUnlink(state, seriesId);
+export function unlinkMetron(state, seriesId, now = nowIso(), linkKey = null) {
+  const { remove, restore } = planUnlink(state, seriesId, linkKey);
   const gone = new Set(remove);
   const volumes = state.volumes
     .filter((v) => !gone.has(v.id))
     .map((v) => {
       if (!restore.includes(v.id)) return v;
       const pre = v.preMetron || { format: v.format === 'issue' ? 'trade' : v.format, cover: null, storeDate: null };
-      return { ...v, metronId: null, cover: pre.cover, storeDate: pre.storeDate, format: pre.format, preMetron: null, fromMetron: false, isNew: false, updatedAt: now };
+      return { ...v, metronId: null, cover: pre.cover, storeDate: pre.storeDate, format: pre.format, preMetron: null, fromMetron: false, isNew: false, linkKey: null, updatedAt: now };
     });
+  const unlinkSeries = (s) => {
+    if (!linkKey) return { ...s, metron: null, links: [], updatedAt: now };
+    const rest = seriesLinks(s).filter((l) => linkKeyOf(l) !== linkKey);
+    return { ...s, metron: rest[0] || null, links: rest.slice(1), updatedAt: now };
+  };
   return {
     ...state,
     volumes,
-    series: state.series.map((s) => (s.id === seriesId ? { ...s, metron: null, updatedAt: now } : s)),
+    series: state.series.map((s) => (s.id === seriesId ? unlinkSeries(s) : s)),
     deleted: withDeleted(state, remove, now),
   };
 }
@@ -923,4 +996,145 @@ export function formatForSource(state, seriesId, source, metronType) {
   for (const v of volumesOf(state, seriesId)) if (v.format !== 'issue') counts[v.format] = (counts[v.format] || 0) + 1;
   const best = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
   return best ? best[0] : 'trade';
+}
+
+// ---------------------------------------------------------------- leesroute
+
+export function setVolumeKind(state, id, kind, now = nowIso()) {
+  const v = getVolume(state, id);
+  if (!v || !(kind in KINDS)) return state;
+  return replaceVolume(state, { ...v, kind, isSide: kind === 'side', updatedAt: now });
+}
+
+/** "+ Toch lezen" / weghalen uit je route (alleen voor zijverhalen). */
+export function setInRoute(state, id, on, now = nowIso()) {
+  const v = getVolume(state, id);
+  if (!v) return state;
+  return replaceVolume(state, { ...v, inRoute: !!on, updatedAt: now });
+}
+
+export function setMainOnly(state, seriesId, on, now = nowIso()) {
+  return { ...state, series: state.series.map((s) => (s.id === seriesId ? { ...s, mainOnly: !!on, updatedAt: now } : s)) };
+}
+
+/** Schuift een deel één plek omhoog (-1) of omlaag (+1) in de volgorde. */
+export function moveVolume(state, id, dir, now = nowIso()) {
+  const v = getVolume(state, id);
+  if (!v) return state;
+  const vols = volumesOf(state, v.seriesId);
+  const i = vols.findIndex((x) => x.id === id);
+  const j = i + (dir < 0 ? -1 : 1);
+  if (j < 0 || j >= vols.length) return state;
+  // Hernummer netjes 1..n en wissel de twee.
+  const order = vols.map((x) => x.id);
+  [order[i], order[j]] = [order[j], order[i]];
+  const pos = new Map(order.map((vid, k) => [vid, k + 1]));
+  return {
+    ...state,
+    volumes: state.volumes.map((x) => (pos.has(x.id) && x.position !== pos.get(x.id) ? { ...x, position: pos.get(x.id), updatedAt: now } : x)),
+  };
+}
+
+/**
+ * De Ultimate Comics-leesroute (2011–2014), van Ultimate Fallout tot Cataclysm.
+ * `match` herkent delen die al in je kast staan.
+ */
+export const ULTIMATE_ROUTE = [
+  { title: 'Ultimate Fallout', kind: 'event', issues: 'Ultimate Fallout #1–6', match: /fallout/ },
+  { title: 'Ultimate Comics Spider-Man Vol. 1–2', kind: 'main', issues: 'Ultimate Comics Spider-Man #1–12', match: /spider-man(?!.*divided)(?!\s*#?1[3-8])/ },
+  { title: 'Ultimate Comics Hawkeye', kind: 'side', issues: 'Ultimate Comics Hawkeye #1–4', match: /hawkeye/ },
+  { title: 'Ultimate Comics Ultimates by Jonathan Hickman Vol. 1–2', kind: 'main', issues: 'Ultimate Comics Ultimates #1–12', match: /hickman|ultimates (by|vol)/ },
+  { title: 'Ultimate Comics X-Men Vol. 1–2', kind: 'main', issues: 'Ultimate Comics X-Men #1–12', match: /x-men(?!.*divided)/ },
+  { title: 'Spider-Men', kind: 'side', issues: 'Spider-Men #1–5', note: 'Crossover met het gewone Marvel-universum.', match: /^spider-men/ },
+  { title: 'Divided We Fall, United We Stand', kind: 'event', issues: 'Ultimate Comics Ultimates #13–18\nUltimate Comics X-Men #13–18\nUltimate Comics Spider-Man #13–18', match: /divided we fall/ },
+  { title: 'Ultimate Comics Iron Man', kind: 'side', issues: 'Ultimate Comics Iron Man #1–4', match: /iron man/ },
+  { title: 'Ultimate Comics Wolverine', kind: 'side', issues: 'Ultimate Comics Wolverine #1–4', match: /wolverine/ },
+  { title: 'Ultimates, X-Men en Spider-Man vanaf #19', kind: 'main', issues: 'Ultimate Comics Ultimates #19–30\nUltimate Comics X-Men #19–33\nUltimate Comics Spider-Man #19–28', match: /vanaf #?19|#19/ },
+  { title: 'Hunger', kind: 'side', issues: 'Hunger #1–4', note: 'Aanloop naar Cataclysm.', match: /^hunger/ },
+  { title: 'Cataclysm: The Ultimates\' Last Stand', kind: 'event', issues: 'Cataclysm: The Ultimates\' Last Stand #1–5', match: /cataclysm/ },
+];
+
+/**
+ * Vult een serie aan met een leesroute: bestaande delen worden herkend en op hun plek gezet
+ * (je leesstatus blijft), ontbrekende delen worden toegevoegd. Delen die niet in de route staan
+ * komen erachter.
+ */
+export function applyRouteTemplate(state, seriesId, template, now = nowIso()) {
+  let next = state;
+  const used = new Set();
+  const order = [];
+  let added = 0;
+  for (const entry of template) {
+    const vols = volumesOf(next, seriesId);
+    const found = vols.find((v) => !used.has(v.id) && entry.match.test(v.title.toLowerCase()));
+    if (found) {
+      used.add(found.id);
+      order.push(found.id);
+      let patched = { ...found, kind: entry.kind, isSide: entry.kind === 'side', updatedAt: now };
+      if (!found.issues.length) {
+        const { issues } = parseIssues(entry.issues, '');
+        patched = { ...patched, issues: found.readStatus === 'read' ? issues.map((i) => ({ ...i, read: true })) : issues };
+      }
+      next = replaceVolume(next, patched);
+      continue;
+    }
+    const r = addVolume(next, {
+      seriesId,
+      title: entry.title,
+      number: '',
+      position: 0,
+      format: 'trade',
+      kind: entry.kind,
+      issues: parseIssues(entry.issues, '').issues,
+      note: entry.note || '',
+    }, now);
+    next = r.state;
+    used.add(r.id);
+    order.push(r.id);
+    added += 1;
+  }
+  for (const v of volumesOf(next, seriesId)) if (!used.has(v.id)) order.push(v.id);
+  const pos = new Map(order.map((id, k) => [id, k + 1]));
+  next = {
+    ...next,
+    volumes: next.volumes.map((v) => (pos.has(v.id) && v.position !== pos.get(v.id) ? { ...v, position: pos.get(v.id), updatedAt: now } : v)),
+  };
+  return { state: next, added, matched: used.size - added };
+}
+
+// ---------------------------------------------------------------- meerdere reeksen per serie
+
+export function linkKeyOf(link) {
+  return link ? `${link.source || 'metron'}:${link.id}` : null;
+}
+
+/** Alle online reeksen van een serie (de eerste koppeling plus extra reeksen). */
+export function seriesLinks(series) {
+  const out = [];
+  const seen = new Set();
+  for (const l of [series?.metron, ...(series?.links || [])]) {
+    if (!l) continue;
+    const k = linkKeyOf(l);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(l);
+  }
+  return out;
+}
+
+/** Voegt een extra reeks toe aan een serie (of maakt hem de eerste als er nog geen is). */
+export function addLink(state, seriesId, link, now = nowIso()) {
+  const s = getSeries(state, seriesId);
+  if (!s) return state;
+  const clean = cleanMetronSeries(link);
+  if (seriesLinks(s).some((l) => linkKeyOf(l) === linkKeyOf(clean))) return state;
+  const patch = s.metron ? { links: [...(s.links || []), clean] } : { metron: clean };
+  return { ...state, series: state.series.map((x) => (x.id === seriesId ? { ...x, ...patch, updatedAt: now } : x)) };
+}
+
+/** Voegt één boek uit een online bron toe aan een serie (via "+ Volume" → Zoek online). */
+export function addVolumeFromSource(state, seriesId, item, format, { reeksName = '', now = nowIso() } = {}) {
+  const data = volumeDataFromMetron(item, format);
+  const title = String(item.title || '').trim() || (reeksName ? (data.number && data.number !== '1' ? `${reeksName} #${data.number}` : reeksName) : data.title);
+  return addVolume(state, { ...data, title, number: '', seriesId, position: nextPosition(state, seriesId) }, now);
 }

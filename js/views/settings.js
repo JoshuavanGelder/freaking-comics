@@ -5,7 +5,7 @@ import { h, backButton, topbar, toast, section, bubble, formatDate } from '../ui
 import { api, isConnected, getConnection, saveConnection, disconnect } from '../api.js';
 import { syncNow, syncStatus, fetchRemote } from '../sync.js';
 
-export const APP_VERSION = '0.3.0';
+export const APP_VERSION = '0.4.0';
 
 // Schermstatus van het koppel-formulier.
 const conn = { busy: false, error: null, choice: null, checking: false };

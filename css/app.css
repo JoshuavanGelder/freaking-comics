@@ -690,3 +690,63 @@ button { cursor: pointer; }
   .toast { animation: none; }
   .icon-btn:active, .btn:active { transform: none; }
 }
+
+/* ---------------------------------------------------------------- leesroute */
+
+.route-hero {
+  margin: 8px 16px 0;
+  background-color: var(--blue);
+  color: var(--white);
+  border: var(--border);
+  border-radius: 18px;
+  box-shadow: 6px 6px 0 var(--ink);
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.route-hero__sub { font-size: 13px; font-weight: 600; }
+.route-hero__progress { font-size: 13px; font-weight: 800; margin-top: 4px; }
+
+.toggle {
+  width: 60px; height: 34px; flex-shrink: 0;
+  border: var(--border); border-radius: 99px; padding: 0;
+  position: relative; background: #e4dcc8;
+}
+.toggle[aria-checked='true'] { background: var(--yellow); }
+.toggle__knob {
+  position: absolute; top: 3px; left: 3px;
+  width: 22px; height: 22px; border-radius: 99px; background: var(--ink);
+  transition: left 0.15s ease;
+}
+.toggle[aria-checked='true'] .toggle__knob { left: 29px; }
+
+.route-card {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 12px;
+  padding: 12px; border-radius: 14px; border: var(--border);
+  background: var(--white); box-shadow: 4px 4px 0 var(--ink);
+}
+.route-card--side { margin-left: 18px; box-shadow: 4px 4px 0 var(--blue); }
+.route-card--dashed { background: var(--paper); border-style: dashed; box-shadow: none; }
+.route-card--next { box-shadow: 4px 4px 0 var(--red); }
+.route-card__body { display: flex; flex-direction: column; gap: 4px; flex: 1 1 0; min-width: 0; text-decoration: none; color: var(--ink); }
+.route-card__body:hover { color: var(--ink); }
+.route-dot { width: 26px; height: 26px; flex-shrink: 0; border: var(--border-thin); border-radius: 99px; background: var(--white); }
+.route-move { display: flex; flex-direction: column; gap: 6px; }
+.route-move .icon-btn:first-child svg { transform: rotate(-90deg); }
+.route-move .icon-btn:last-child svg { transform: rotate(90deg); }
+.route-move .icon-btn:disabled { opacity: 0.35; }
+.route-kinds { display: flex; gap: 6px; flex-wrap: wrap; flex-basis: 100%; }
+.route-kinds .chip { min-height: 36px; font-size: 12px; padding: 0 10px; }
+
+.route-skip {
+  display: flex; align-items: center; gap: 10px;
+  padding: 6px 6px 6px 12px; margin-left: 18px;
+  border: 2px dashed #8a8a8a; border-radius: 12px;
+  color: var(--muted); font-size: 12px; line-height: 1.35;
+}
+.route-skip__text { flex-grow: 1; }
+.route-skip .btn { box-shadow: none; font-size: 12px; padding: 0 10px; flex-shrink: 0; }
+
+.link-row { display: flex; align-items: center; gap: 10px; justify-content: space-between; }
+.link-row .sub { flex: 1; min-width: 0; }

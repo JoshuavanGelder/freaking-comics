@@ -54,6 +54,8 @@ const ICONS = {
   pause: ['M8 5v14', 'M16 5v14'],
   play: ['M7 4l13 8-13 8z'],
   check: ['M5 12l5 5L20 7'],
+  close: ['M6 6l12 12', 'M18 6L6 18'],
+  route: ['M6 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4z', 'M18 9a2 2 0 1 0 0-4 2 2 0 0 0 0 4z', 'M6 15V9a4 4 0 0 1 4-4h6', 'M18 9v6a4 4 0 0 1-4 4H8'],
 };
 
 export function icon(name, { size = 20, color = 'currentColor', width = 2.6 } = {}) {

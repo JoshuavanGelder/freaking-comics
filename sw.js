@@ -1,6 +1,6 @@
 // Service worker: zorgt dat de app ook zonder internet opent.
 // Netwerk eerst (zodat je altijd de nieuwste versie krijgt), cache als terugval.
-const CACHE = 'freaking-comics-v2';
+const CACHE = 'freaking-comics-v3';
 const SHELL = [
   './',
   './index.html',
@@ -15,6 +15,7 @@ const SHELL = [
   './js/api.js',
   './js/sync.js',
   './js/views/metron.js',
+  './js/views/route.js',
   './js/views/home.js',
   './js/views/lists.js',
   './js/views/detail.js',
