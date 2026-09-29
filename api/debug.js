@@ -6,6 +6,7 @@ import { getJson, KEYS } from './_lib/store.js';
 import { cvGet } from './_lib/comicvine.js';
 import { metronGet, findIssueSeries, listSeriesItems } from './_lib/metron.js';
 import { refreshRecs } from './aanraders.js';
+import { addComicVine, changeVolume, changeSeries, removeSeries } from './_lib/beheer.js';
 
 function allowed(key) {
   const secret = process.env.CRON_SECRET;
@@ -29,13 +30,14 @@ export const GET = handle(async (request) => {
       rev: stored?.rev,
       epoch: stored?.epoch,
       series: series.map((s) => ({
+        id: s.id,
         title: s.title,
         metron: s.metron,
         links: s.links,
         volumes: state.volumes
           .filter((v) => v.seriesId === s.id)
           .sort((a, b) => a.position - b.position)
-          .map((v) => ({ pos: v.position, title: v.title, number: v.number, kind: v.kind, read: v.readStatus, rating: v.rating || null, own: v.ownership, ext: v.metronId, link: v.linkKey, date: v.storeDate, issues: v.issues.map((i) => `${i.series} #${i.number}`) })),
+          .map((v) => ({ id: v.id, pos: v.position, title: v.title, number: v.number, kind: v.kind, read: v.readStatus, rating: v.rating || null, own: v.ownership, ext: v.metronId, link: v.linkKey, date: v.storeDate, issues: v.issues.map((i) => `${i.series} #${i.number}`) })),
       })),
     });
   }
@@ -79,6 +81,13 @@ export const GET = handle(async (request) => {
     const d = await metronGet('series/', { name: p.get('q') || '', series_type_id: p.get('type') || undefined });
     return json(d.results);
   }
+
+  // ---- schrijven (voor Claude in de chat, bijv. na een foto van de boekenkast)
+  const opts = { bezit: p.get('bezit'), gelezen: p.get('gelezen'), verlanglijst: p.get('verlanglijst'), titel: p.get('titel'), force: p.get('force') === '1' };
+  if (what === 'cv-toevoegen') return json(await addComicVine(Number(p.get('id')), opts));
+  if (what === 'boek') return json(await changeVolume(p.get('id'), { bezit: p.get('bezit'), gelezen: p.get('gelezen'), oordeel: p.get('oordeel') }));
+  if (what === 'serie') return json(await changeSeries(p.get('id'), opts));
+  if (what === 'serie-weg') return json(await removeSeries(p.get('id')));
 
   if (what === 'aanraders-lijst') {
     const recs = (await getJson(KEYS.recs)) || {};

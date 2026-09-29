@@ -284,3 +284,49 @@ test('aanraders: zonder sleutel een duidelijke melding', async () => {
   assert.equal(r.status, 503);
   assert.match(r.error, /ANTHROPIC_API_KEY/);
 });
+
+test('beheer vanuit de chat: reeks toevoegen, bezit/gelezen zetten, telefoon krijgt het via sync', async () => {
+  fake.store.clear();
+  const debug = await import('../api/debug.js');
+  const D = (qs) => debug.GET(req(`/api/debug?key=cron-geheim&${qs}`));
+  // Telefoon heeft al een kast met één serie
+  let phone = M.emptyState();
+  phone = M.addSeries(phone, { title: 'Saga' }).state;
+  await sync.POST(req('/api/sync', { method: 'POST', headers: H, body: JSON.stringify({ state: phone }) }));
+
+  const r = await body(await D('what=cv-toevoegen&id=1111&bezit=1-6&gelezen=1-5&verlanglijst=7'));
+  assert.equal(r.status, 200);
+  assert.equal(r.existed, false);
+  assert.equal(r.added, 9);
+  assert.match(r.series.volumes[0], /Vol\. 1 Move Forward · read · owned/);
+  assert.match(r.series.volumes[5], /Vol\. 6 Out of Time · unread · owned/);
+  assert.match(r.series.volumes[6], /Vol\. 7 .* · unread · wishlist/);
+  assert.match(r.series.volumes[8], /Vol\. 9 .* · unread · none/);
+
+  // Nog eens: bestaande serie wordt hergebruikt
+  const again = await body(await D('what=cv-toevoegen&id=1111&bezit=7'));
+  assert.equal(again.existed, true);
+  assert.equal(again.added, 0);
+  assert.match(again.series.volumes[6], /owned/);
+
+  // Eén boek aanpassen, met oordeel
+  const volId = again.series.volumes[0].split(' · ').at(-1);
+  const b = await body(await D(`what=boek&id=${volId}&oordeel=top`));
+  assert.match(b.series.volumes[0], /· top ·/);
+
+  // Losse nummers weigeren zonder force
+  const issues = await body(await D('what=cv-toevoegen&id=2222&bezit=1'));
+  assert.equal(issues.status, 400);
+
+  // Telefoon synct: krijgt Flash erbij en houdt Saga
+  const merged = await body(await sync.POST(req('/api/sync', { method: 'POST', headers: H, body: JSON.stringify({ state: phone }) })));
+  assert.deepEqual(merged.state.series.map((s) => s.title).sort(), ['Saga', 'The Flash']);
+  assert.equal(merged.state.volumes.filter((v) => v.ownership === 'owned').length, 7);
+
+  // Serie weghalen
+  const flash = merged.state.series.find((s) => s.title === 'The Flash');
+  const w = await body(await D(`what=serie-weg&id=${flash.id}`));
+  assert.equal(w.removed, 'The Flash');
+  assert.equal((await D('what=cv-toevoegen&id=1111')).status, 200);
+  assert.equal((await debug.GET(req('/api/debug?key=fout&what=serie-weg&id=x'))).status, 401);
+});
