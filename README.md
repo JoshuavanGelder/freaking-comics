@@ -12,6 +12,7 @@ Houd bij welke comics je gelezen hebt. Per serie een bladwijzer, altijd zichtbaa
 - **Volgorde en zijverhalen** per serie: hoofdverhaal, zijverhalen en events op verschijningsdatum, met *Alleen hoofdverhaal* en *+ Toch lezen*.
 - **Nieuwe delen automatisch**: elke ochtend om ±07:00 controleert de server al je gekoppelde reeksen. Nieuwe delen verschijnen op Home onder *Nieuw verschenen*; aangekondigde delen onder *Binnenkort*. Het aantal nieuwe delen staat ook als getal op het app-icoon (waar je telefoon dat ondersteunt).
 - **Sync tussen apparaten**: automatisch bij openen, na elke wijziging en elke 5 minuten. Werkt ook offline. **Alles wissen** leegt de kast op de server én op al je gekoppelde apparaten.
+- **Animaties tussen schermen** in pop-art-stijl: dieper de app in schuift het nieuwe scherm als een strippaneel met inktrand over het oude, terug schuift het weer weg, en een ander tabblad knalt erin. Uit bij "beperk beweging" op je telefoon.
 - Leesstatus en kaststatus, issues afvinken, pauze, verlanglijst, ongedaan maken, back-up.
 
 ## Installeren (eenmalig, ± 10 minuten)

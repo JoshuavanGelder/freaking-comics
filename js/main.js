@@ -11,6 +11,7 @@ import { serieFormView, volumeFormView } from './views/forms.js';
 import { settingsView } from './views/settings.js';
 import { routeView } from './views/route.js';
 import { aanradersView } from './views/aanraders.js';
+import { transitionKind, runTransition } from './transition.js';
 
 const routes = [
   [/^\/$/, (_m, ctx) => homeView(ctx)],
@@ -67,10 +68,17 @@ function render({ keepFocus = false } = {}) {
   return view;
 }
 
+let lastPath = null;
+
 function onRoute() {
-  const view = render();
-  window.scrollTo(0, 0);
-  if (view?.focus) view.focus.focus({ preventScroll: true });
+  const path = parseHash().path;
+  const kind = transitionKind(lastPath, path);
+  lastPath = path;
+  runTransition(kind, () => {
+    const view = render();
+    window.scrollTo(0, 0);
+    if (view?.focus) view.focus.focus({ preventScroll: true });
+  });
 }
 
 /** Aantal nieuwe delen als stipje op het app-icoon (waar de telefoon dat ondersteunt). */

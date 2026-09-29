@@ -636,6 +636,79 @@ button { cursor: pointer; }
 .nav a[aria-current='page'] { color: var(--yellow); font-weight: 800; }
 .nav a:focus-visible { outline-color: var(--yellow); outline-offset: -3px; }
 
+/* ---------------------------------------------------------------- overgangen tussen schermen */
+/* js/transition.js zet html[data-nav] op fwd (dieper), back (terug) of tab (ander tabblad).
+   Het menu onderin krijgt een eigen naam, zodat het stil blijft staan terwijl het scherm beweegt. */
+
+.nav { view-transition-name: fc-nav; }
+::view-transition-group(fc-nav) { animation: none; }
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 0.34s;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+  animation-fill-mode: both;
+  mix-blend-mode: normal;
+}
+
+/* Dieper: nieuw paneel schuift van rechts over het oude, met een dikke inktrand. */
+html[data-nav='fwd']::view-transition-old(root) { animation-name: fc-push-away; }
+html[data-nav='fwd']::view-transition-new(root) { animation-name: fc-slide-in; }
+
+/* Terug: het paneel schuift weer naar rechts weg. */
+html[data-nav='back']::view-transition-old(root) { animation-name: fc-slide-out; z-index: 2; }
+html[data-nav='back']::view-transition-new(root) { animation-name: fc-pull-back; }
+
+/* Ander tabblad: het nieuwe scherm knalt erin. */
+html[data-nav='tab']::view-transition-old(root) { animation: fc-fade-out 0.14s ease-in both; }
+html[data-nav='tab']::view-transition-new(root) { animation: fc-bam 0.3s cubic-bezier(0.34, 1.4, 0.64, 1) both; }
+
+@keyframes fc-slide-in {
+  from { transform: translateX(100%); filter: drop-shadow(-6px 0 0 var(--ink)); }
+  to { transform: none; filter: drop-shadow(-6px 0 0 var(--ink)); }
+}
+@keyframes fc-push-away {
+  to { transform: translateX(-25%); filter: brightness(0.82); }
+}
+@keyframes fc-slide-out {
+  from { transform: none; filter: drop-shadow(-6px 0 0 var(--ink)); }
+  to { transform: translateX(100%); filter: drop-shadow(-6px 0 0 var(--ink)); }
+}
+@keyframes fc-pull-back {
+  from { transform: translateX(-25%); filter: brightness(0.82); }
+  to { transform: none; filter: none; }
+}
+@keyframes fc-fade-out {
+  to { opacity: 0; transform: scale(0.98); }
+}
+@keyframes fc-bam {
+  0% { opacity: 0; transform: scale(0.9) rotate(-1.5deg); }
+  60% { opacity: 1; transform: scale(1.015) rotate(0.4deg); }
+  100% { opacity: 1; transform: none; }
+}
+
+/* Terugval voor browsers zonder View Transitions: alleen het nieuwe scherm beweegt. */
+.page-in { animation: 0.28s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.page-in--fwd { animation-name: fc-page-fwd; }
+.page-in--back { animation-name: fc-page-back; }
+.page-in--tab { animation-name: fc-bam; animation-timing-function: cubic-bezier(0.34, 1.4, 0.64, 1); }
+
+@keyframes fc-page-fwd {
+  from { opacity: 0; transform: translateX(48px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes fc-page-back {
+  from { opacity: 0; transform: translateX(-48px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) { animation: none !important; }
+  .page-in { animation: none; }
+}
+
 /* ---------------------------------------------------------------- toast */
 
 .toast-wrap {
