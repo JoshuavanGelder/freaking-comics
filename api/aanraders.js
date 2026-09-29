@@ -7,17 +7,12 @@ import { json, preflight, handle, requireApp, readJson, HttpError } from './_lib
 import { getJson, setJson, KEYS } from './_lib/store.js';
 import { askRecommendations, claudeConfigured } from './_lib/claude.js';
 import { findRecommendation, comicVineConfigured } from './_lib/comicvine.js';
-import { tasteProfile, shelfTitles, seriesLinks, emptyState } from '../js/model.js';
+import { tasteProfile, shelfTitles, seriesLinks, emptyState, profileHash as hash, recsNeedUpdate } from '../js/model.js';
 
 export const OPTIONS = preflight;
 
-const STALE_AFTER = 2 * 86400e3; // kast veranderd én ouder dan 2 dagen → vanzelf opnieuw
-
-function hash(text) {
-  let h = 5381;
-  for (let i = 0; i < text.length; i += 1) h = ((h << 5) + h + text.charCodeAt(i)) | 0;
-  return (h >>> 0).toString(36);
-}
+// Nieuwe aanraders worden alleen gemaakt als je erom vraagt (knop "Aanraders bijwerken"),
+// en alleen als je kast (boeken of status) veranderd is sinds de vorige keer, of er minder dan 3 over zijn.
 
 function keyOf(item) {
   return `${item.series} ${item.title}`.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 120);
@@ -38,20 +33,18 @@ function inShelf(state) {
 }
 
 function view(state, recs) {
-  const profile = tasteProfile(state);
   const dismissed = new Set(recs.dismissed.map((d) => d.key));
   const has = inShelf(state);
   const items = recs.items.filter((i) => !dismissed.has(i.key) && !has(i));
   const readSomething = state.volumes.some((v) => v.readStatus !== 'unread');
-  const age = recs.generatedAt ? Date.now() - Date.parse(recs.generatedAt) : Infinity;
-  const changed = recs.basedOn !== hash(profile);
   return {
     configured: { ai: claudeConfigured(), comicvine: comicVineConfigured() },
     generatedAt: recs.generatedAt || null,
+    basedOn: recs.basedOn || null,
     items,
     dismissedCount: dismissed.size,
     canMake: readSomething,
-    stale: readSomething && (!recs.generatedAt || items.length < 3 || (changed && age > STALE_AFTER)),
+    needsUpdate: readSomething && recsNeedUpdate(state, { generatedAt: recs.generatedAt, basedOn: recs.basedOn, visibleCount: items.length }),
   };
 }
 
@@ -113,8 +106,9 @@ export const POST = handle(async (request) => {
   } else if (body.undismiss) {
     recs.dismissed = recs.dismissed.filter((d) => d.key !== body.undismiss);
   } else if (body.refresh) {
+    // Niets veranderd sinds de vorige keer? Dan Claude niet opnieuw vragen (kost geld en geeft hetzelfde).
     const recent = recs.generatedAt && Date.now() - Date.parse(recs.generatedAt) < 20_000;
-    if (!recent) recs = await generate(state, recs);
+    if (!recent && view(state, recs).needsUpdate) recs = await generate(state, recs);
   } else {
     throw new HttpError(400, 'Onbekende vraag.');
   }

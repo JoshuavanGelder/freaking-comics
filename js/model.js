@@ -1390,6 +1390,20 @@ export function tasteProfile(state, { maxVolumes = 80 } = {}) {
   return lines.join('\n');
 }
 
+/** Korte vingerafdruk van het leesprofiel: verandert als er iets in je kast of aan een status verandert. */
+export function profileHash(text) {
+  let h = 5381;
+  for (let i = 0; i < text.length; i += 1) h = ((h << 5) + h + text.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36);
+}
+
+/** Moeten de aanraders bijgewerkt worden? Alleen als de kast veranderd is, of er (bijna) geen meer over zijn. */
+export function recsNeedUpdate(state, { generatedAt, basedOn, visibleCount }) {
+  if (!generatedAt) return true;
+  if (visibleCount < 3) return true;
+  return basedOn !== profileHash(tasteProfile(state));
+}
+
 /** Titels van alles wat al in de kast staat (om dubbele aanraders te vermijden), in kleine letters. */
 export function shelfTitles(state) {
   const out = new Set();

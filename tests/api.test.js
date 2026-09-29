@@ -238,7 +238,7 @@ test('aanraders: Claude leest de kast, Comic Vine levert cover, wegklikken wordt
   const before = await body(await aanraders.GET(req('/api/aanraders', { headers: H })));
   assert.equal(before.configured.ai, true);
   assert.equal(before.items.length, 0);
-  assert.equal(before.stale, true);
+  assert.equal(before.needsUpdate, true);
 
   const r = await body(await aanraders.POST(req('/api/aanraders', { method: 'POST', headers: H, body: JSON.stringify({ refresh: true }) })));
   assert.equal(r.status, 200);
@@ -255,7 +255,19 @@ test('aanraders: Claude leest de kast, Comic Vine levert cover, wegklikken wordt
   // Wat al in de kast staat valt weg (Ultimate Comics X-Men Vol. 1: Blood zit in de testkast)
   const inKast = M.shelfTitles(state).has('ultimate comics x-men vol. 1: blood');
   if (inKast) assert.ok(!r.items.some((i) => i.series === 'Ultimate Comics X-Men'));
-  assert.equal(r.stale, false);
+  // Zelfde kast → geen knop "bijwerken" nodig, en nog eens vragen roept Claude niet aan
+  assert.equal(r.needsUpdate, false);
+  const calls = fake.calls.filter((c) => c === '/v1/messages').length;
+  const stored0 = JSON.parse(fake.store.get('fc:aanraders'));
+  stored0.generatedAt = '2026-01-01T00:00:00.000Z';
+  fake.store.set('fc:aanraders', JSON.stringify(stored0));
+  const same = await body(await aanraders.POST(req('/api/aanraders', { method: 'POST', headers: H, body: JSON.stringify({ refresh: true }) })));
+  assert.equal(fake.calls.filter((c) => c === '/v1/messages').length, calls);
+  assert.equal(same.needsUpdate, false);
+  // Kast veranderd (Top gegeven) → wel bijwerken
+  const changed = M.setRating(state, M.volumesOf(state, flash.id)[1].id, 'niks');
+  await sync.POST(req('/api/sync', { method: 'POST', headers: H, body: JSON.stringify({ state: changed }) }));
+  assert.equal((await body(await aanraders.GET(req('/api/aanraders', { headers: H })))).needsUpdate, true);
 
   const d = await body(await aanraders.POST(req('/api/aanraders', { method: 'POST', headers: H, body: JSON.stringify({ dismiss: hunger.key }) })));
   assert.ok(!d.items.some((i) => i.key === hunger.key));

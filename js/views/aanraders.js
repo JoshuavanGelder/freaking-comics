@@ -11,7 +11,7 @@ const COLOR_BY_PUBLISHER = [[/marvel/i, 'red'], [/\bdc\b|vertigo/i, 'blue'], [/i
 
 // Zolang de app open is. De lijst wordt (stil) opnieuw opgehaald als hij ouder is dan 30 seconden,
 // zodat een aanrader die je net hebt toegevoegd vanzelf verdwijnt.
-const recs = { status: 'idle', data: null, error: null, making: false, autoTried: false, fetching: false, fetchedAt: 0 };
+const recs = { status: 'idle', data: null, error: null, making: false, fetching: false, fetchedAt: 0 };
 
 function load(ctx) {
   if (!isConnected() || recs.fetching || recs.making) return;
@@ -42,16 +42,29 @@ subscribe(() => {
 
 const canMakeHere = (state) => state.volumes.some((v) => v.readStatus !== 'unread');
 
-/** Eén keer per sessie vanzelf aanraders maken als er nog geen zijn of je kast flink veranderd is. */
-function maybeAuto(ctx, d) {
-  if (recs.autoTried || recs.making || !d.configured.ai || !canMakeHere(getState())) return;
-  if (d.stale || !d.items.length) queueMicrotask(() => make(ctx, { auto: true }));
+/** Aanraders worden nooit vanzelf gemaakt: alleen met de knop, en die verschijnt alleen als je kast veranderd is. */
+function needsUpdate(d) {
+  return M.recsNeedUpdate(getState(), { generatedAt: d.generatedAt, basedOn: d.basedOn, visibleCount: d.items.length });
+}
+
+function updateButton(ctx, d, { block = true } = {}) {
+  return h(
+    'button',
+    { class: `btn btn--yellow${block ? ' btn--block' : ''}`, type: 'button', 'data-key': 'recs-refresh', disabled: recs.making, onClick: () => make(ctx) },
+    icon('star', { size: 18, width: 2.4 }),
+    recs.making ? 'Claude zoekt boeken voor je uit…' : d.generatedAt ? 'Aanraders bijwerken' : 'Maak aanraders',
+  );
+}
+
+function updateReason(d) {
+  if (!d.generatedAt) return 'Claude kijkt in je kast en zoekt boeken die bij je passen.';
+  if (d.items.length < 3) return d.items.length ? `Nog maar ${d.items.length} ${d.items.length === 1 ? 'aanrader' : 'aanraders'} over.` : 'Alle aanraders zijn op.';
+  return 'Je kast is veranderd sinds de laatste aanraders.';
 }
 
 async function make(ctx, { auto = false } = {}) {
   if (recs.making) return;
   recs.making = true;
-  recs.autoTried = true;
   recs.error = null;
   ctx?.rerender();
   try {
@@ -154,12 +167,10 @@ export function homeRecs(ctx) {
   load(ctx);
   const d = recs.data && { ...recs.data, items: visible(recs.data.items), canMake: canMakeHere(getState()) };
   if (!d || !d.configured.ai || !d.canMake) return null;
-  maybeAuto(ctx, d);
-  const more = h('a', { class: 'btn btn--block', href: '#/aanraders' }, icon('star', { size: 18, width: 2.4 }), d.items.length > 2 ? `Alle aanraders (${d.items.length})` : 'Naar aanraders');
-  if (!d.items.length) {
-    return section('Aanraders voor jou', null, h('p', { class: 'hint', role: 'status' }, recs.making ? 'Claude zoekt boeken voor je uit…' : 'Nog geen aanraders.'), recs.making ? null : more);
-  }
-  return section('Aanraders voor jou', `${d.items.length}`, h('div', { class: 'stack', style: { gap: '16px' } }, d.items.slice(0, 2).map((i) => recCard(i, ctx))), more);
+  const update = needsUpdate(d) || recs.making ? [h('p', { class: 'hint' }, updateReason(d)), updateButton(ctx, d)] : null;
+  if (!d.items.length) return section('Aanraders voor jou', null, update);
+  const more = d.items.length > 2 ? h('a', { class: 'btn btn--block', href: '#/aanraders' }, `Alle aanraders (${d.items.length})`) : null;
+  return section('Aanraders voor jou', `${d.items.length}`, h('div', { class: 'stack', style: { gap: '16px' } }, d.items.slice(0, 2).map((i) => recCard(i, ctx))), more, update);
 }
 
 export function aanradersView(ctx) {
@@ -176,24 +187,21 @@ export function aanradersView(ctx) {
 
   const d = { ...recs.data, items: visible(recs.data.items), canMake: canMakeHere(state) };
   if (!d.configured.ai) return main(setupHint());
-  if (d.canMake) maybeAuto(ctx, d);
   if (!d.canMake) {
     return main(bubble('Zet eerst een paar boeken in je kast die je gelezen hebt. Dan weet Claude wat je leuk vindt.'), h('a', { class: 'btn btn--ink btn--block', href: '#/zoeken' }, 'Serie zoeken'));
   }
 
-  const refresh = h(
-    'button',
-    { class: 'btn btn--yellow btn--block', type: 'button', 'data-key': 'recs-refresh', disabled: recs.making, onClick: () => make(ctx) },
-    recs.making ? 'Claude zoekt boeken voor je uit…' : d.items.length ? 'Nieuwe aanraders' : 'Maak aanraders',
-  );
-  const when = d.generatedAt ? `Gemaakt op ${formatDate(d.generatedAt.slice(0, 10))} op basis van je kast.` : '';
+  const update = needsUpdate(d) || recs.making;
+  const when = d.generatedAt ? `Gemaakt op ${formatDate(d.generatedAt.slice(0, 10))}.` : '';
+  const status = update
+    ? h('div', { class: 'stack' }, h('p', { class: 'hint', role: 'status' }, updateReason(d)), updateButton(ctx, d))
+    : h('p', { class: 'hint', style: { textAlign: 'center' } }, `${when} Bijgewerkt met je huidige kast. Lees je iets, voeg je iets toe of geef je een duim, dan kun je ze hier bijwerken.`);
   return main(
     rateHint(state),
     recs.error ? h('div', { class: 'error-box', role: 'alert' }, recs.error) : null,
-    d.items.length
-      ? h('div', { class: 'stack', style: { gap: '18px' } }, d.items.map((i) => recCard(i, ctx)))
-      : recs.making ? null : bubble('Nog geen aanraders. Tik hieronder en Claude kijkt in je kast.'),
-    refresh,
-    h('p', { class: 'hint', style: { textAlign: 'center' } }, [when, d.dismissedCount ? `${d.dismissedCount} weggeklikt.` : ''].filter(Boolean).join(' ')),
+    update ? status : null,
+    d.items.length ? h('div', { class: 'stack', style: { gap: '18px' } }, d.items.map((i) => recCard(i, ctx))) : null,
+    update ? null : status,
+    d.dismissedCount ? h('p', { class: 'hint', style: { textAlign: 'center' } }, `${d.dismissedCount} weggeklikt.`) : null,
   );
 }

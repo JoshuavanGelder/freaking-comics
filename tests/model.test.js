@@ -206,3 +206,18 @@ test('waardering: Top/Niks per boek, nogmaals tikken haalt weg; komt in het lees
   assert.equal(M.getVolume(M.normalizeState(JSON.parse(JSON.stringify(state))), v.id).rating, 'top');
   assert.equal(M.getVolume(M.updateVolume(state, v.id, { note: 'mooi' }), v.id).rating, 'top');
 });
+
+test('aanraders bijwerken: alleen als de kast of een status veranderd is, of er < 3 over zijn', () => {
+  let state = seedState();
+  const basedOn = M.profileHash(M.tasteProfile(state));
+  const at = '2026-09-29T08:00:00.000Z';
+  assert.equal(M.recsNeedUpdate(state, { generatedAt: null, basedOn: null, visibleCount: 0 }), true);
+  assert.equal(M.recsNeedUpdate(state, { generatedAt: at, basedOn, visibleCount: 6 }), false);
+  assert.equal(M.recsNeedUpdate(state, { generatedAt: at, basedOn, visibleCount: 2 }), true);
+  const flash = state.series.find((s) => s.title === 'The Flash');
+  const v = M.volumesOf(state, flash.id).find((x) => x.readStatus !== 'read');
+  assert.equal(M.recsNeedUpdate(M.setReadStatus(state, v.id, 'read'), { generatedAt: at, basedOn, visibleCount: 6 }), true);
+  assert.equal(M.recsNeedUpdate(M.setOwnership(state, v.id, 'owned'), { generatedAt: at, basedOn, visibleCount: 6 }), true);
+  // Iets wat niet in het profiel zit (bijv. een notitie) telt niet
+  assert.equal(M.recsNeedUpdate(M.updateVolume(state, v.id, { note: 'leuk' }), { generatedAt: at, basedOn, visibleCount: 6 }), false);
+});
