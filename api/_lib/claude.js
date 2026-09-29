@@ -69,10 +69,10 @@ export async function askRecommendations({ profile, dismissed = [], previous = [
       headers: { 'x-api-key': key.trim(), 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
       body: JSON.stringify({
         model: MODEL(),
-        max_tokens: 3000,
-        system: SYSTEM,
+        max_tokens: 8000,
+        system: `${SYSTEM}\n\nAlways answer by calling the "${TOOL.name}" tool exactly once; do not answer in plain text.`,
         tools: [TOOL],
-        tool_choice: { type: 'tool', name: TOOL.name },
+        tool_choice: { type: 'auto' },
         messages: [{ role: 'user', content: user }],
       }),
     });
@@ -90,7 +90,19 @@ export async function askRecommendations({ profile, dismissed = [], previous = [
     throw new HttpError(502, `Claude: ${msg}`);
   }
   const call = (body.content || []).find((c) => c.type === 'tool_use' && c.name === TOOL.name);
-  const items = Array.isArray(call?.input?.items) ? call.input.items : [];
+  let items = Array.isArray(call?.input?.items) ? call.input.items : [];
+  if (!call) {
+    // Terugval: soms komt het antwoord als tekst met JSON erin.
+    const text = (body.content || []).filter((c) => c.type === 'text').map((c) => c.text).join('\n');
+    const m = text.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
+    try {
+      const parsed = m ? JSON.parse(m[0]) : null;
+      items = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.items) ? parsed.items : [];
+    } catch {
+      items = [];
+    }
+    if (!items.length) throw new HttpError(502, 'Claude gaf geen bruikbare aanraders terug. Probeer het nog eens.');
+  }
   return items
     .filter((i) => i && i.series && i.reason)
     .map((i) => ({
