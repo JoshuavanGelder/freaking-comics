@@ -35,7 +35,7 @@ export const GET = handle(async (request) => {
         volumes: state.volumes
           .filter((v) => v.seriesId === s.id)
           .sort((a, b) => a.position - b.position)
-          .map((v) => ({ pos: v.position, title: v.title, number: v.number, kind: v.kind, read: v.readStatus, ext: v.metronId, link: v.linkKey, date: v.storeDate, issues: v.issues.map((i) => `${i.series} #${i.number}`) })),
+          .map((v) => ({ pos: v.position, title: v.title, number: v.number, kind: v.kind, read: v.readStatus, rating: v.rating || null, own: v.ownership, ext: v.metronId, link: v.linkKey, date: v.storeDate, issues: v.issues.map((i) => `${i.series} #${i.number}`) })),
       })),
     });
   }
@@ -78,6 +78,15 @@ export const GET = handle(async (request) => {
   if (what === 'metron-search') {
     const d = await metronGet('series/', { name: p.get('q') || '', series_type_id: p.get('type') || undefined });
     return json(d.results);
+  }
+
+  if (what === 'aanraders-lijst') {
+    const recs = (await getJson(KEYS.recs)) || {};
+    return json({
+      generatedAt: recs.generatedAt || null,
+      items: (recs.items || []).map((i) => ({ key: i.key, kind: i.kind, series: i.series, title: i.title, year: i.year, creators: i.creators, because: i.because, reason: i.reason, cv: i.cv ? i.cv.id : null })),
+      dismissed: recs.dismissed || [],
+    });
   }
 
   if (what === 'aanraders') {
