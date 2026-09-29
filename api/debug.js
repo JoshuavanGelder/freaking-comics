@@ -54,6 +54,16 @@ export const GET = handle(async (request) => {
     return json({ ...d.results, description: String(d.results.description || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').slice(0, 1500) });
   }
 
+  if (what === 'metron-lists') {
+    const d = await metronGet('reading_list/', { name: p.get('q') || '' });
+    return json({ count: d.count, results: d.results.map((r) => ({ id: r.id, name: r.name, type: r.list_type, source: r.attribution_source, user: r.user?.username, rating: r.average_rating })) });
+  }
+
+  if (what === 'metron-list-items') {
+    const d = await metronGet(`reading_list/${Number(p.get('id'))}/items/`, { page: p.get('page') || 1 });
+    return json({ count: d.count, next: !!d.next, items: d.results.map((i) => `${i.order}. ${i.issue?.series?.name} (${i.issue?.series?.year_began}) #${i.issue?.number} ${i.issue_type || ''} ${i.issue?.cover_date || ''}`) });
+  }
+
   if (what === 'metron-search') {
     const d = await metronGet('series/', { name: p.get('q') || '', series_type_id: p.get('type') || undefined });
     return json(d.results);
