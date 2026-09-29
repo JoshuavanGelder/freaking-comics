@@ -86,6 +86,14 @@ async function generate(state, recs) {
   return { ...recs, generatedAt: new Date().toISOString(), basedOn: hash(profile), items };
 }
 
+/** Nieuwe aanraders maken en bewaren (ook gebruikt door de diagnose-functie). */
+export async function refreshRecs() {
+  const { state, recs } = await loadAll();
+  const next = await generate(state, recs);
+  await setJson(KEYS.recs, next);
+  return view(state, next);
+}
+
 export const GET = handle(async (request) => {
   requireApp(request);
   const { state, recs } = await loadAll();

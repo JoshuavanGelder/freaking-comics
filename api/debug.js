@@ -5,6 +5,7 @@ import { json, handle, HttpError } from './_lib/http.js';
 import { getJson, KEYS } from './_lib/store.js';
 import { cvGet } from './_lib/comicvine.js';
 import { metronGet, findIssueSeries, listSeriesItems } from './_lib/metron.js';
+import { refreshRecs } from './aanraders.js';
 
 function allowed(key) {
   const secret = process.env.CRON_SECRET;
@@ -77,6 +78,12 @@ export const GET = handle(async (request) => {
   if (what === 'metron-search') {
     const d = await metronGet('series/', { name: p.get('q') || '', series_type_id: p.get('type') || undefined });
     return json(d.results);
+  }
+
+  if (what === 'aanraders') {
+    const started = Date.now();
+    const r = await refreshRecs();
+    return json({ ms: Date.now() - started, items: r.items.map((i) => ({ kind: i.kind, book: `${i.series} ${i.title}`, year: i.year, cv: i.cv ? `${i.cv.id} ${i.cv.name} (${i.cv.year}, ${i.cv.issueCount})` : null, because: i.because, reason: i.reason })) });
   }
 
   throw new HttpError(400, 'Onbekende vraag.');
