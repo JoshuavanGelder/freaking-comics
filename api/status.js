@@ -18,7 +18,7 @@ export const GET = handle(async (request) => {
   }
   return json({
     ok: true,
-    version: '0.5.0',
+    version: '0.5.1',
     configured: {
       secret: !!process.env.APP_SECRET,
       storage: storageConfigured(),

@@ -6,6 +6,23 @@ import { api, isConnected } from '../api.js';
 import { h, icon, backButton, topbar, toast, bubble, section, formatDate } from '../ui.js';
 
 const SOURCES = ['comicvine', 'metron'];
+const SHOW_KEY = 'freaking-comics:bron';
+
+// Welke bron(nen) je wilt zien: 'beide', 'comicvine' of 'metron'. Onthouden op dit apparaat.
+function getShow() {
+  try {
+    const v = localStorage.getItem(SHOW_KEY);
+    return v === 'comicvine' || v === 'metron' ? v : 'beide';
+  } catch {
+    return 'beide';
+  }
+}
+function setShow(v) {
+  try {
+    localStorage.setItem(SHOW_KEY, v);
+  } catch { /* niets aan te doen */ }
+}
+const shownSources = () => (getShow() === 'beide' ? SOURCES : [getShow()]);
 const base = (source) => (source === 'comicvine' ? '/api/comicvine' : '/api/metron');
 const COLOR_BY_PUBLISHER = { DC: 'blue', Marvel: 'red', Image: 'yellow' };
 const UNDO = { label: 'Ongedaan', run: () => { undo(); toast('Teruggezet.'); } };
@@ -271,7 +288,7 @@ async function runSearch(ctx, { seriesId } = {}) {
     (manyIssues(r) ? 30 : 0);
   const results = {};
   await Promise.all(
-    SOURCES.map(async (src) => {
+    shownSources().map(async (src) => {
       try {
         const extra = src === 'metron' && ui.all ? '&alles=1' : '';
         const res = await api(`${base(src)}/search?q=${encodeURIComponent(q)}${extra}`, { timeout: 90_000 });
@@ -416,9 +433,10 @@ export function metronView(_params, ctx, query) {
       h('button', { class: 'btn btn--ghost', type: 'button', onClick: () => { ui.pick = null; ctx.rerender(); } }, 'Terug naar de zoekresultaten'),
     );
   } else if (ui.results) {
-    const total = SOURCES.reduce((n, s) => n + (ui.results[s] || []).length, 0);
+    const shown = shownSources();
+    const total = shown.reduce((n, s) => n + (ui.results[s] || []).length, 0);
     list = total
-      ? SOURCES.map((src) =>
+      ? shown.map((src) =>
           section(
             M.SOURCE_LABELS[src],
             `${(ui.results[src] || []).length}`,
@@ -430,7 +448,7 @@ export function metronView(_params, ctx, query) {
         )
       : [
           bubble(`Niets gevonden voor "${ui.q}". Probeer minder woorden, of alleen de naam van de serie.`),
-          ...SOURCES.filter((s) => ui.errors[s]).map((s) => h('div', { class: 'error-box', role: 'alert' }, `${M.SOURCE_LABELS[s]}: ${ui.errors[s]}`)),
+          ...shown.filter((s) => ui.errors[s]).map((s) => h('div', { class: 'error-box', role: 'alert' }, `${M.SOURCE_LABELS[s]}: ${ui.errors[s]}`)),
         ];
   }
 
@@ -460,12 +478,33 @@ export function metronView(_params, ctx, query) {
           h('button', { class: 'btn btn--ink', type: 'submit', disabled: ui.loading || !!ui.job }, ui.loading ? '…' : 'Zoek'),
         ),
         h(
+          'div',
+          { class: 'segmented', role: 'group', 'aria-label': 'Zoeken in' },
+          [['beide', 'Beide'], ['comicvine', 'Comic Vine'], ['metron', 'Metron']].map(([v, text]) =>
+            h(
+              'button',
+              {
+                type: 'button',
+                'aria-pressed': String(getShow() === v),
+                'data-key': `show-${v}`,
+                onClick: () => {
+                  setShow(v);
+                  // Resultaten van een bron die nog niet opgehaald is? Dan opnieuw zoeken.
+                  if (ui.results && shownSources().some((s) => !(s in ui.results))) runSearch(ctx, { seriesId: extra || bookMode ? null : seriesId });
+                  else ctx.rerender();
+                },
+              },
+              text,
+            ),
+          ),
+        ),
+        getShow() === 'comicvine' ? null : h(
           'label',
           { class: 'check', for: 'f-all' },
           h('input', { type: 'checkbox', id: 'f-all', checked: ui.all, onChange: (e) => { ui.all = e.target.checked; runSearch(ctx, { seriesId: extra || bookMode ? null : seriesId }); } }),
           h('span', {}, 'Ook Metron-series met losse nummers tonen', h('br'), h('span', { class: 'hint' }, 'Standaard zie je bij Metron alleen trades, hardcovers en omnibussen.')),
         ),
-        ui.loading ? h('p', { class: 'hint', role: 'status' }, 'Zoeken op Metron en Comic Vine…') : null,
+        ui.loading ? h('p', { class: 'hint', role: 'status' }, `Zoeken op ${shownSources().map((s) => M.SOURCE_LABELS[s]).join(' en ')}…`) : null,
         ui.error ? h('div', { class: 'error-box', role: 'alert' }, ui.error) : null,
         ui.job ? progressCard() : list,
         addSeries

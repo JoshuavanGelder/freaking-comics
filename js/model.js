@@ -747,8 +747,12 @@ export function volumeDataFromMetron(item, format) {
     .filter(Boolean)
     .map((r) => ({ id: makeId('i'), series: r.series, number: r.number, read: false }));
   const fallbackName = item.issue ? splitMetronSeriesName(String(item.issue).replace(/\s*#.*$/, '')).name : '';
+  // "Volume 1: Move Forward" → "Move Forward" (het deelnummer staat er al apart bij)
+  const rawTitle = String(item.title || '').trim();
+  const stripped = rawTitle.replace(/^vol(?:ume)?\.?\s*\d+(?:\.\d+)?\s*[:.\-–]\s*/i, '').trim();
   const title =
-    String(item.title || '').trim() ||
+    stripped ||
+    rawTitle ||
     (Array.isArray(item.name) && item.name.filter(Boolean).join(' / ')) ||
     (format === 'issue' && fallbackName ? `${fallbackName} #${item.number}` : '') ||
     `Deel ${item.number}`;

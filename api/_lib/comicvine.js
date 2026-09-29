@@ -57,39 +57,90 @@ function titleCase(s) {
   return s.toLowerCase().replace(/(^|[\s:(-])([a-z])/g, (_m, a, b) => a + b.toUpperCase());
 }
 
+const LEAD_WORDS = new Set(['collects', 'collecting', 'collected', 'collection', 'includes', 'including', 'featuring', 'from', 'in', 'and', 'plus', 'with', 'of', 'the', 'these', 'this', 'stories', 'story', 'tales', 'issues', 'issue', 'reprints', 'reprinting', 'presents', 'plus:']);
+
+/** "THE FLASH" → "The Flash"; laat gewone schrijfwijze staan. */
+function niceName(s) {
+  const t = s.trim().replace(/[\s:,;.!]+$/, '');
+  return t === t.toUpperCase() ? titleCase(t) : t;
+}
+
 /**
- * Haalt "Collects The Flash #1-8 and The Flash Annual #1" uit een omschrijving.
+ * Zoekt de serienaam vlak vóór een "#": de reeks woorden met hoofdletters direct ervoor
+ * ("THE FLASH ANNUAL", "Ultimate Comics X-Men"), zonder aanloopwoorden als "Collects" of "issues".
+ */
+function seriesBefore(text) {
+  const words = text.trim().split(/\s+/);
+  const picked = [];
+  for (let i = words.length - 1; i >= 0; i -= 1) {
+    const w = words[i];
+    const bare = w.replace(/^[("'“]+|[)"'”:,]+$/g, '');
+    if (!bare) break;
+    const lower = bare.toLowerCase();
+    // Een woord met een hoofdletter (of cijfer, of "&"), of een klein verbindingswoord binnen een ALL-CAPS naam
+    const capital = /^[A-Z0-9&]/.test(bare) || (/^(of|the|and|vs\.?)$/.test(lower) && picked.length && picked[0] === picked[0].toUpperCase());
+    if (!capital) break;
+    if (/[.!?]$/.test(w) && picked.length) break; // einde van de vorige zin
+    picked.unshift(bare);
+  }
+  // Aanloopwoorden vooraan eraf ("Collects The Flash" → "The Flash"; "Plus THE FLASH" → "THE FLASH")
+  while (picked.length && LEAD_WORDS.has(picked[0].toLowerCase()) && !(picked[0] === 'THE' || picked[0] === 'The' ? picked.length > 1 && picked[1] === picked[1].toUpperCase() && picked[0] === 'THE' : false)) {
+    // "The" mag blijven als hij bij een ALL-CAPS naam hoort ("THE FLASH")
+    if ((picked[0] === 'The' || picked[0] === 'the') && picked.length > 1 && /^[A-Z]/.test(picked[1]) && picked[1] !== picked[1].toUpperCase()) break;
+    picked.shift();
+  }
+  // Mengvorm "Collects THE FLASH": neem alleen het ALL-CAPS stuk
+  const capsStart = picked.findIndex((w) => w.length > 1 && w === w.toUpperCase() && /[A-Z]/.test(w));
+  if (capsStart > 0 && picked.slice(capsStart).every((w) => w === w.toUpperCase())) picked.splice(0, capsStart);
+  return picked.join(' ');
+}
+
+/**
+ * Haalt uit een omschrijving welke nummers erin zitten, bijv.
+ * "Collects issues #1-8", "collecting issues #0, 9-12 and THE FLASH ANNUAL #1",
+ * "from THE FLASH #20-25, and #23.2: REVERSE FLASH!", "THE FLASH #36-40 and SECRET ORIGINS #7".
+ * `defaultSeries` is de naam als er alleen "issues #1-8" staat.
  * Geeft reprints terug in dezelfde vorm als Metron: [{ issue: "The Flash #1" }, …]. Beste poging.
  */
-export function collectedFromDescription(html) {
-  const text = stripHtml(html);
-  const m = text.match(/\bcollect(?:s|ing|ed)?\b[:\s]+(?:the\s+(?:issues|stories)\s+)?(.{3,400}?)(?:\.\s|\.$|$)/i);
-  if (!m) return [];
+export function collectedFromDescription(html, defaultSeries = '') {
+  const text = stripHtml(html).replace(/[–—]/g, '-');
+  const base = niceName(String(defaultSeries || '').replace(/\s*\(.*?\)\s*$/, ''));
   const out = [];
   const seen = new Set();
-  let lastSeries = '';
-  for (const raw of m[1].split(/,|;|\band\b|&/i)) {
-    const part = raw.trim();
-    const mm = part.match(/^(.*?)#\s*([\w.]+)\s*(?:[-–—]\s*#?\s*([\w.]+))?/) ||
-      (lastSeries ? part.match(/^()(\d+(?:\.\d+)?)\s*(?:[-–—]\s*(\d+))?$/) : null);
-    if (!mm) continue;
-    let series = titleCase(mm[1].replace(/\b(issues?|nos?\.?)\b/gi, '').replace(/[\s:]+$/, '').trim()) || lastSeries;
-    if (!series) continue;
-    lastSeries = series;
-    const from = mm[2];
-    const to = mm[3];
-    const add = (n) => {
-      const key = `${series}|${n}`;
-      if (!seen.has(key)) {
-        seen.add(key);
-        out.push({ id: out.length + 1, issue: `${series} #${n}` });
-      }
-    };
-    if (to && /^\d+$/.test(from) && /^\d+$/.test(to) && Number(to) >= Number(from) && Number(to) - Number(from) <= 200) {
-      for (let n = Number(from); n <= Number(to); n += 1) add(n);
-    } else {
-      add(from);
+  const add = (series, n) => {
+    const key = `${series.toLowerCase()}|${n}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      out.push({ id: out.length + 1, issue: `${series} #${n}` });
     }
+  };
+  const addRange = (series, from, to) => {
+    if (to && /^\d+$/.test(from) && /^\d+$/.test(to) && Number(to) >= Number(from) && Number(to) - Number(from) <= 200) {
+      for (let n = Number(from); n <= Number(to); n += 1) add(series, String(n));
+    } else add(series, from);
+  };
+  // Een "#"-verwijzing met eventueel een reeks vervolgnummers: "#0, 9-12", "#20-25, and #23.2"
+  const re = /#\s*(\d+(?:\.\d+)?)(?:\s*-\s*#?\s*(\d+(?:\.\d+)?))?((?:\s*(?:,|and|&)\s*(?:and\s+)?#?\s*\d+(?:\.\d+)?(?:\s*-\s*\d+(?:\.\d+)?)?(?![\w.]*\s*[A-Za-z]{2,}\s*#))*)/g;
+  let last = base;
+  let prevEnd = 0;
+  let m;
+  while ((m = re.exec(text))) {
+    const before = text.slice(prevEnd, m.index);
+    let series = niceName(seriesBefore(before));
+    if (!series) series = last || base;
+    if (!series) {
+      prevEnd = re.lastIndex;
+      continue;
+    }
+    // "FLASH ANNUAL" bij "The Flash" → "The Flash Annual"
+    if (base && /^the\s/i.test(base) && series.toLowerCase().startsWith(base.slice(4).toLowerCase()) && !/^the\s/i.test(series)) series = `The ${series}`;
+    addRange(series, m[1], m[2]);
+    for (const part of (m[3] || '').split(/,|&|\band\b/)) {
+      const pm = part.match(/(\d+(?:\.\d+)?)(?:\s*-\s*(\d+(?:\.\d+)?))?/);
+      if (pm) addRange(series, pm[1], pm[2]);
+    }
+    last = series;
+    prevEnd = re.lastIndex;
   }
   return out;
 }
@@ -121,7 +172,7 @@ function simplifyIssue(i, volumeName) {
     image: i.image?.super_url || i.image?.medium_url || i.image?.original_url || null,
     store_date: i.store_date || null,
     cover_date: i.cover_date || null,
-    reprints: collectedFromDescription(i.description),
+    reprints: collectedFromDescription(i.description, volumeName || i.volume?.name || ''),
   };
 }
 
@@ -158,7 +209,7 @@ export async function getVolume(id) {
 
 /** Alle nummers van een Comic Vine-volume, meteen met details (cover, titel, datum, inhoud). Max. 500. */
 export async function listVolumeIssues(id, { fresh = false } = {}) {
-  const key = `fc:cv:volume-issues:${Number(id)}`;
+  const key = `fc:cv:volume-issues2:${Number(id)}`;
   const load = async () => {
     const vol = await getVolume(id);
     const items = [];

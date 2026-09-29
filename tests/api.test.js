@@ -201,3 +201,15 @@ test('alles wissen: server leeg, oude apparaten nemen de lege kast over', async 
   const joined = await body(await sync.POST(req('/api/sync', { method: 'POST', headers: H, body: JSON.stringify({ state: M.addSeries(M.emptyState(), { title: 'Hunger' }).state, join: true }) })));
   assert.equal(joined.state.series.length, 2);
 });
+
+test('Comic Vine: inhoud uit echte omschrijvingen (The Flash New 52)', async () => {
+  const { collectedFromDescription: C } = await import('../api/_lib/comicvine.js');
+  const g = (d) => M.formatIssues(C(d, 'The Flash').map((x, i) => ({ id: String(i), ...M.parseReprint(x.issue), read: false })), 'The Flash');
+  assert.equal(g('Collects issues #1-8 of the original monthly series.'), '#1–8');
+  assert.equal(g('collecting issues #0, 9-12 and THE FLASH ANNUAL #1! Who'), '#0, #9–12, Annual #1');
+  assert.equal(g("stories from THE FLASH #20-25, and #23.2: REVERSE FLASH!"), '#20–25, #23.2');
+  assert.equal(g('from issues #26-29 and FLASH ANNUAL #2, find out'), '#26–29, Annual #2');
+  assert.equal(g('from THE FLASH #30-35, THE FLASH ANNUAL #3 and THE FLASH: FUTURES END #1, the'), '#30–35, Annual #3, Futures End #1');
+  assert.equal(g('Collects THE FLASH #41-47 and the Sneak Peek story from CONVERGENCE: DETECTIVE COMICS #2.'), '#41–47, Convergence Detective Comics #2');
+  assert.equal(g('with Zoom from issues #48-52, The Flash is on the run'), '#48–52');
+});
