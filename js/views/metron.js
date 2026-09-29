@@ -1,14 +1,14 @@
 // Zoeken op Metron en gegevens binnenhalen: een hele serie, of één los boek koppelen.
 import * as M from '../model.js';
-import { getState, dispatch } from '../store.js';
+import { getState, dispatch, undo } from '../store.js';
 import { api, isConnected } from '../api.js';
 import { h, icon, backButton, topbar, toast, bubble, section } from '../ui.js';
 
 // Schermstatus zolang je op deze pagina bent.
-const ui = { key: '', q: '', results: null, loading: false, error: null, job: null, pick: null };
+const ui = { key: '', q: '', results: null, loading: false, error: null, job: null, pick: null, all: false };
 
 function reset(key, q) {
-  Object.assign(ui, { key, q, results: null, loading: false, error: null, job: null, pick: null });
+  Object.assign(ui, { key, q, results: null, loading: false, error: null, job: null, pick: null, all: false });
 }
 
 const COLOR_BY_PUBLISHER = { DC: 'blue', Marvel: 'red', Image: 'yellow' };
@@ -34,7 +34,7 @@ async function fetchDetails(items, ctx, label) {
 }
 
 /** Haalt een Metron-serie binnen: in een bestaande serie (koppelen/bijwerken) of als nieuwe serie. */
-export async function importSeries(metronId, localSeriesId, ctx) {
+export async function importSeries(metronId, localSeriesId, ctx, { confirmed = false } = {}) {
   ui.error = null;
   ui.job = { label: 'Serie ophalen', done: 0, total: 1 };
   ctx.rerender();
@@ -42,10 +42,23 @@ export async function importSeries(metronId, localSeriesId, ctx) {
     const { series, items } = await api(`/api/metron/series?id=${metronId}`, { timeout: 90_000 });
     const format = M.formatFromMetronType(series.type);
     const collected = format !== 'issue';
+    if (!collected && !confirmed && items.length > 12) {
+      const ok = confirm(
+        `"${series.name}" is een serie met ${items.length} losse nummers, geen trades.\n\n` +
+          `Elk nummer wordt dan een apart deel in je kast. Lees je trades of hardcovers, kies dan een serie met "Trade Paperback" of "Hardcover".\n\nToch doorgaan?`,
+      );
+      if (!ok) {
+        ui.job = null;
+        ctx.rerender();
+        return;
+      }
+    }
     // Bij verzamelde edities zijn de details nodig (titel, welke issues erin zitten).
     const details = collected && items.length ? await fetchDetails(items.slice(0, 60), ctx, 'Delen ophalen') : items;
     const all = collected ? [...details, ...items.slice(60)] : items;
-    const metron = { id: series.id, name: `${series.name}${series.type ? ` (${series.type})` : ''}`, type: series.type };
+    const existing = localSeriesId ? M.getSeries(getState(), localSeriesId) : null;
+    const linkedAt = existing?.metron?.id === series.id && existing.metron.linkedAt ? existing.metron.linkedAt : new Date().toISOString();
+    const metron = { id: series.id, name: `${series.name}${series.type ? ` (${series.type})` : ''}`, type: series.type, linkedAt };
 
     const result = dispatch((s) => {
       let st = s;
@@ -67,12 +80,12 @@ export async function importSeries(metronId, localSeriesId, ctx) {
       }
       const applied = M.applyMetronItems(st, id, all, format);
       return { state: applied.state, id, added: applied.added.length, updated: applied.updated.length };
-    });
+    }, { undoable: true });
     ui.job = null;
     const parts = [];
     if (result.added) parts.push(`${result.added} ${result.added === 1 ? 'deel' : 'delen'} toegevoegd`);
     if (result.updated) parts.push(`${result.updated} bijgewerkt`);
-    toast(parts.length ? `${parts.join(', ')}.` : 'Alles was al up-to-date.');
+    toast(parts.length ? `${parts.join(', ')}.` : 'Alles was al up-to-date.', parts.length ? { label: 'Ongedaan', run: () => { undo(); toast('Teruggezet.'); } } : undefined);
     ui.key = '';
     location.replace(`#/serie/${result.id}`);
   } catch (err) {
@@ -107,7 +120,7 @@ async function runSearch(ctx) {
   ui.pick = null;
   ctx.rerender();
   try {
-    const { results } = await api(`/api/metron/search?q=${encodeURIComponent(q)}`);
+    const { results } = await api(`/api/metron/search?q=${encodeURIComponent(q)}${ui.all ? '&alles=1' : ''}`, { timeout: 90_000 });
     ui.results = results;
   } catch (err) {
     ui.error = err.message;
@@ -237,7 +250,7 @@ export function metronView(_params, ctx, query) {
               h(
                 'div',
                 { class: 'shelf-item__body' },
-                M.isCollectedType(r.type) ? h('span', { class: 'tag' }, r.type.toUpperCase()) : null,
+                M.isCollectedType(r.type) ? h('span', { class: 'tag' }, r.type.toUpperCase()) : h('span', { class: 'tag tag--soon' }, 'LOSSE NUMMERS'),
                 h('div', { class: 'title' }, r.name),
                 h('div', { class: 'sub' }, describe(r)),
               ),
@@ -271,6 +284,20 @@ export function metronView(_params, ctx, query) {
           h('label', { class: 'sr-only', for: 'q' }, 'Zoeken'),
           input,
           h('button', { class: 'btn btn--ink', type: 'submit', disabled: ui.loading || !!ui.job }, ui.loading ? '…' : 'Zoek'),
+        ),
+        h(
+          'label',
+          { class: 'check', for: 'f-all' },
+          h('input', {
+            type: 'checkbox',
+            id: 'f-all',
+            checked: ui.all,
+            onChange: (e) => {
+              ui.all = e.target.checked;
+              runSearch(ctx);
+            },
+          }),
+          h('span', {}, 'Ook series met losse nummers tonen', h('br'), h('span', { class: 'hint' }, 'Standaard zie je alleen trades, hardcovers en omnibussen.')),
         ),
         ui.error ? h('div', { class: 'error-box', role: 'alert' }, ui.error) : null,
         ui.job ? progressCard() : list,

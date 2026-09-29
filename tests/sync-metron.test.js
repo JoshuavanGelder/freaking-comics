@@ -174,3 +174,48 @@ test('adoptState: alles wissen wist ook op de server', () => {
   assert.equal(merged.series.length, 0);
   assert.equal(merged.volumes.length, 0);
 });
+
+function ongoing(count, offset = 0) {
+  return Array.from({ length: count }, (_, i) => ({ id: 70000 + offset + i, number: String(i + 1), title: '', issue: `The Flash (1987) #${i + 1}`, image: `https://static.metron.cloud/o${i}.jpg`, store_date: '1987-01-01' }));
+}
+
+test('unlinkMetron: verkeerde koppeling (losse nummers) netjes terugdraaien', () => {
+  const s0 = seedState();
+  const flash = s0.series.find((x) => x.title === 'The Flash');
+  let s = M.updateSeries(s0, flash.id, { metron: { id: 1, name: 'The Flash (1987)', type: 'Ongoing Series', linkedAt: T3 } }, T3);
+  s = M.applyMetronItems(s, flash.id, ongoing(400), 'issue', { now: T3 }).state;
+  assert.equal(M.volumesOf(s, flash.id).length, 400);
+  // Je leest intussen per ongeluk "issue" 20 → dat deel blijft staan
+  const v20 = M.volumesOf(s, flash.id).find((v) => v.number === '20');
+  s = M.setOwnership(s, v20.id, 'owned', T3);
+  const plan = M.planUnlink(s, flash.id);
+  assert.equal(plan.remove.length, 390);
+  s = M.unlinkMetron(s, flash.id, T3);
+  const vols = M.volumesOf(s, flash.id);
+  assert.equal(vols.length, 10);
+  const v6 = vols.find((v) => v.title === 'Out of Time');
+  assert.equal(v6.format, 'trade');
+  assert.equal(v6.cover, null);
+  assert.equal(v6.metronId, null);
+  assert.equal(M.getSeries(s, flash.id).metron, null);
+  assert.equal(M.nextUp(s, flash.id).title, 'Out of Time');
+  assert.equal(M.seriesStats(s, flash.id).readMain, 5);
+  // Na sync met de oude (kapotte) serverversie blijft het opgeruimd
+  const merged = M.mergeStates(s, s, T3);
+  assert.equal(M.volumesOf(merged, flash.id).length, 10);
+});
+
+test('unlinkMetron: oude koppeling zonder markeringen (zoals vanochtend)', () => {
+  const s0 = seedState();
+  const flash = s0.series.find((x) => x.title === 'The Flash');
+  let s = M.updateSeries(s0, flash.id, { metron: { id: 1, name: 'The Flash (1987)', type: 'Ongoing Series' } }, T3);
+  s = M.applyMetronItems(s, flash.id, ongoing(300), 'issue', { now: '2026-09-29T06:01:12.000Z' }).state;
+  s = M.applyMetronItems(s, flash.id, ongoing(300, 1000), 'issue', { now: '2026-09-29T06:02:01.000Z' }).state;
+  // Nabootsen van oude data: de nieuwe markeringen bestaan nog niet
+  s = { ...s, volumes: s.volumes.map((v) => ({ ...v, fromMetron: false, preMetron: null })) };
+  assert.ok(M.volumesOf(s, flash.id).length > 500);
+  s = M.unlinkMetron(s, flash.id, T3);
+  const vols = M.volumesOf(s, flash.id);
+  assert.deepEqual(vols.map((v) => v.title), ['Move Forward', 'Rogues Revolution', 'Gorilla Warfare', 'Reverse', 'History Lessons', 'Out of Time', 'Savage World', 'Zoom', 'Full Stop']);
+  assert.ok(vols.every((v) => v.format === 'trade' && v.metronId == null && v.cover == null));
+});

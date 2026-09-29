@@ -31,6 +31,7 @@ ISSUES.push({
     { id: 62000 + k, issue: `Ultimate Comics Spider-Man (2011) #${k}` },
   ]),
 });
+for (let k = 1; k <= 52; k += 1) ISSUES.push({ id: 40000 + k, seriesId: 1000, number: String(k), title: '', store_date: '2012-01-01', reprints: [] });
 ['Volume One', 'Volume Two', 'Volume Three'].forEach((title, i) => {
   ISSUES.push({ id: 30001 + i, seriesId: 3001, number: String(i + 1), title, store_date: `201${3 + i}-10-23`, reprints: [] });
 });
@@ -75,7 +76,8 @@ function metron(url, init) {
   let m;
   if (path === 'series/') {
     const words = (p.get('name') || '').toLowerCase().split(/\s+/).filter(Boolean);
-    const results = SERIES.filter((s) => words.every((w) => s.series.toLowerCase().includes(w)));
+    const typeId = p.get('series_type_id');
+    const results = SERIES.filter((s) => words.every((w) => s.series.toLowerCase().includes(w)) && (!typeId || String(s.series_type.id) === typeId));
     return respond({ count: results.length, next: null, previous: null, results });
   }
   if ((m = path.match(/^series\/(\d+)\/$/))) {

@@ -65,7 +65,10 @@ test('Metron zoeken zet verzamelde edities bovenaan', async () => {
   const r = await body(await search.GET(req('/api/metron/search?q=the%20flash', { headers: H })));
   assert.equal(r.results[0].type, 'Trade Paperback');
   assert.equal(r.results[0].name, 'The Flash TPB (2012)');
-  assert.equal(r.results.length, 2);
+  assert.equal(r.results.length, 1); // standaard alleen verzamelde edities
+  const all = await body(await search.GET(req('/api/metron/search?q=the%20flash&alles=1', { headers: H })));
+  assert.equal(all.results.length, 2);
+  assert.equal(all.results[0].type, 'Trade Paperback');
 });
 
 test('Metron serie + details', async () => {

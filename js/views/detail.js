@@ -1,7 +1,7 @@
 // Serie-pagina (bladwijzer, voortgang, alle delen) en volume-pagina (status, issues, volgende deel).
 import * as M from '../model.js';
-import { getState, dispatch } from '../store.js';
-import { h, icon, cover, section, bubble, backButton, topbar, progress, formatDate } from '../ui.js';
+import { getState, dispatch, undo } from '../store.js';
+import { h, icon, cover, section, bubble, backButton, topbar, progress, formatDate, toast } from '../ui.js';
 import * as A from '../actions.js';
 import { isConnected } from '../api.js';
 
@@ -333,5 +333,24 @@ function metronBox(series) {
     isConnected()
       ? h('a', { class: 'btn', href: `#/zoeken?serie=${series.id}&bijwerken=1` }, 'Nu bijwerken')
       : null,
+    h(
+      'button',
+      {
+        class: 'btn btn--ghost',
+        type: 'button',
+        'data-key': 'metron-unlink',
+        onClick: () => {
+          const { remove, restore } = M.planUnlink(getState(), series.id);
+          const msg =
+            `Koppeling met ${series.metron.name} ongedaan maken?\n\n` +
+            `${remove.length} ${remove.length === 1 ? 'deel' : 'delen'} die Metron heeft toegevoegd (en die je niet gelezen, gekocht of genoteerd hebt) worden weggehaald. ` +
+            `${restore.length} ${restore.length === 1 ? 'eigen deel krijgt' : 'eigen delen krijgen'} weer hun oude gegevens. Je leesstatus blijft staan.`;
+          if (!confirm(msg)) return;
+          dispatch((s) => M.unlinkMetron(s, series.id), { undoable: true });
+          toast(`Ontkoppeld: ${remove.length} ${remove.length === 1 ? 'deel' : 'delen'} weggehaald.`, { label: 'Ongedaan', run: () => { undo(); toast('Teruggezet.'); } });
+        },
+      },
+      'Koppeling ongedaan maken',
+    ),
   );
 }

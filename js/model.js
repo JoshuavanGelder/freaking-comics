@@ -361,7 +361,12 @@ function replaceVolume(state, v) {
 
 function cleanMetronSeries(m) {
   if (!m || !Number.isFinite(Number(m.id))) return null;
-  return { id: Number(m.id), name: String(m.name || ''), type: String(m.type || '') };
+  return {
+    id: Number(m.id),
+    name: String(m.name || ''),
+    type: String(m.type || ''),
+    linkedAt: typeof m.linkedAt === 'string' ? m.linkedAt : null,
+  };
 }
 
 function cleanSeriesData(data) {
@@ -432,6 +437,11 @@ function cleanVolumeData(data) {
     cover: cleanUrl(data.cover),
     storeDate: cleanDate(data.storeDate),
     isNew: !!data.isNew,
+    // Bewaard zodat een koppeling later netjes ongedaan kan worden.
+    fromMetron: !!data.fromMetron,
+    preMetron: data.preMetron && typeof data.preMetron === 'object'
+      ? { format: data.preMetron.format in FORMATS ? data.preMetron.format : 'trade', cover: cleanUrl(data.preMetron.cover), storeDate: cleanDate(data.preMetron.storeDate) }
+      : null,
     metronId: data.metronId != null && Number.isFinite(metronId) ? metronId : null,
   };
 }
@@ -755,6 +765,7 @@ export function applyMetronItems(state, seriesId, items, format, { markNew = fal
 
     if (match) {
       const patch = {
+        preMetron: match.preMetron || (match.metronId == null ? { format: match.format, cover: match.cover, storeDate: match.storeDate } : null),
         metronId: data.metronId,
         cover: data.cover || match.cover,
         storeDate: data.storeDate || match.storeDate,
@@ -783,7 +794,7 @@ export function applyMetronItems(state, seriesId, items, format, { markNew = fal
 
     const num = Number(data.number);
     const position = Number.isFinite(num) && !vols.some((v) => v.position === num) ? num : nextPosition(next, seriesId);
-    const r = addVolume(next, { ...data, seriesId, position, isNew: markNew }, now);
+    const r = addVolume(next, { ...data, seriesId, position, isNew: markNew, fromMetron: true }, now);
     next = r.state;
     added.push(r.id);
   }
@@ -863,5 +874,41 @@ export function adoptState(current, target, now = nowIso()) {
     volumes: bump(cur.volumes, tgt.volumes),
     deleted,
     releasesCheckedAt: cur.releasesCheckedAt || tgt.releasesCheckedAt,
+  };
+}
+
+/**
+ * Maakt een Metron-koppeling ongedaan: haalt de delen weg die Metron heeft toegevoegd en die je
+ * niet hebt aangeraakt, en zet je eigen delen terug (formaat, cover, datum).
+ * Delen die je las, bezit, op je verlanglijst zette of van een notitie voorzag blijven altijd staan.
+ */
+export function planUnlink(state, seriesId) {
+  const series = getSeries(state, seriesId);
+  if (!series) return { remove: [], restore: [] };
+  const vols = volumesOf(state, seriesId);
+  const untouched = (v) => v.readStatus === 'unread' && v.ownership === 'none' && !v.note && !v.issues.some((i) => i.read);
+  // Oudere koppelingen (zonder fromMetron-markering): alles wat na je laatste leesactie is aangemaakt.
+  const cutoff = series.metron?.linkedAt || series.lastActivityAt;
+  const added = (v) => v.fromMetron || (v.metronId != null && !v.preMetron && String(v.createdAt) > String(cutoff));
+  const remove = vols.filter((v) => added(v) && untouched(v)).map((v) => v.id);
+  const restore = vols.filter((v) => v.metronId != null && !remove.includes(v.id)).map((v) => v.id);
+  return { remove, restore };
+}
+
+export function unlinkMetron(state, seriesId, now = nowIso()) {
+  const { remove, restore } = planUnlink(state, seriesId);
+  const gone = new Set(remove);
+  const volumes = state.volumes
+    .filter((v) => !gone.has(v.id))
+    .map((v) => {
+      if (!restore.includes(v.id)) return v;
+      const pre = v.preMetron || { format: v.format === 'issue' ? 'trade' : v.format, cover: null, storeDate: null };
+      return { ...v, metronId: null, cover: pre.cover, storeDate: pre.storeDate, format: pre.format, preMetron: null, fromMetron: false, isNew: false, updatedAt: now };
+    });
+  return {
+    ...state,
+    volumes,
+    series: state.series.map((s) => (s.id === seriesId ? { ...s, metron: null, updatedAt: now } : s)),
+    deleted: withDeleted(state, remove, now),
   };
 }

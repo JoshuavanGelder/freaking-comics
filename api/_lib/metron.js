@@ -104,9 +104,21 @@ export function simplifyIssue(i) {
 
 // ---------------------------------------------------------------- publieke functies
 
-export async function searchSeries(q) {
-  const data = await metronGet('series/', { name: q });
-  return (data.results || []).map(simplifySeries);
+// Metron-serietypes voor verzamelde edities: Trade Paperback, Hardcover, Omnibus, Graphic Novel.
+export const COLLECTED_TYPE_IDS = [10, 8, 15, 9];
+
+/** Zoekt series. Met `collected` alleen verzamelde edities (per type een gerichte zoekvraag). */
+export async function searchSeries(q, { collected = false } = {}) {
+  if (!collected) {
+    const data = await metronGet('series/', { name: q });
+    return (data.results || []).map(simplifySeries);
+  }
+  const seen = new Map();
+  for (const typeId of COLLECTED_TYPE_IDS) {
+    const data = await metronGet('series/', { name: q, series_type_id: typeId });
+    for (const s of data.results || []) seen.set(s.id, simplifySeries(s));
+  }
+  return [...seen.values()];
 }
 
 export async function getSeries(id) {
