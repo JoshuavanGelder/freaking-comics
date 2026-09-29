@@ -109,14 +109,21 @@ export const COLLECTED_TYPE_IDS = [10, 8, 15, 9];
 
 /** Zoekt series. Met `collected` alleen verzamelde edities (per type een gerichte zoekvraag). */
 export async function searchSeries(q, { collected = false } = {}) {
-  if (!collected) {
-    const data = await metronGet('series/', { name: q });
-    return (data.results || []).map(simplifySeries);
-  }
+  // Metron zoekt op álle woorden. "The Flash" vindt dan geen "Flash TPB", dus we zoeken ook zonder lidwoord.
+  const variants = [q];
+  const bare = q.replace(/^(the|a|an|de|het)\s+/i, '').trim();
+  if (bare && bare.toLowerCase() !== q.toLowerCase()) variants.push(bare);
   const seen = new Map();
-  for (const typeId of COLLECTED_TYPE_IDS) {
-    const data = await metronGet('series/', { name: q, series_type_id: typeId });
-    for (const s of data.results || []) seen.set(s.id, simplifySeries(s));
+  for (const name of variants) {
+    if (!collected) {
+      const data = await metronGet('series/', { name });
+      for (const s of data.results || []) seen.set(s.id, simplifySeries(s));
+      continue;
+    }
+    for (const typeId of COLLECTED_TYPE_IDS) {
+      const data = await metronGet('series/', { name, series_type_id: typeId });
+      for (const s of data.results || []) seen.set(s.id, simplifySeries(s));
+    }
   }
   return [...seen.values()];
 }

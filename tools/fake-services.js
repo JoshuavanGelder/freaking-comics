@@ -7,6 +7,7 @@ const SERIES = [
   { id: 1000, series: 'The Flash (2011)', name: 'The Flash', year_began: 2011, year_end: 2016, volume: 4, issue_count: 52, publisher: { id: 2, name: 'DC Comics' }, series_type: { id: 1, name: 'Ongoing Series' } },
   { id: 1001, series: 'The Flash TPB (2012)', name: 'The Flash', year_began: 2012, year_end: 2016, volume: 1, issue_count: 9, publisher: { id: 2, name: 'DC Comics' }, series_type: { id: 10, name: 'Trade Paperback' } },
   { id: 2001, series: 'Ultimate Comics: Divided We Fall, United We Stand HC (2013)', name: 'Ultimate Comics: Divided We Fall, United We Stand', year_began: 2013, year_end: 2013, volume: 1, issue_count: 1, publisher: { id: 1, name: 'Marvel' }, series_type: { id: 8, name: 'Hardcover' } },
+  { id: 1002, series: 'Flash TPB (2013)', name: 'Flash', year_began: 2013, year_end: 2017, volume: 1, issue_count: 9, publisher: { id: 2, name: 'DC Comics' }, series_type: { id: 10, name: 'Trade Paperback' } },
   { id: 3001, series: 'Saga TPB (2012)', name: 'Saga', year_began: 2012, year_end: null, volume: 1, issue_count: 3, publisher: { id: 3, name: 'Image' }, series_type: { id: 10, name: 'Trade Paperback' } },
 ];
 

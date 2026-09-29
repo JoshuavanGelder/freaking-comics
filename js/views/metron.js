@@ -121,7 +121,12 @@ async function runSearch(ctx) {
   ctx.rerender();
   try {
     const { results } = await api(`/api/metron/search?q=${encodeURIComponent(q)}${ui.all ? '&alles=1' : ''}`, { timeout: 90_000 });
-    ui.results = results;
+    // Series uit dezelfde jaren als die in je kast eerst.
+    const local = ui.seriesId ? M.getSeries(getState(), ui.seriesId) : null;
+    const year = Number(String(local?.years || '').slice(0, 4)) || null;
+    ui.results = year
+      ? [...results].sort((a, b) => Math.abs((a.year || 0) - year) - Math.abs((b.year || 0) - year))
+      : results;
   } catch (err) {
     ui.error = err.message;
   }
@@ -170,6 +175,7 @@ export function metronView(_params, ctx, query) {
   if (ui.key !== key) {
     const guess = localVolume ? localVolume.title : localSeries ? localSeries.title : '';
     reset(key, guess);
+    ui.seriesId = seriesId;
     if (refresh && isConnected()) queueMicrotask(() => importSeries(localSeries.metron.id, localSeries.id, ctx));
     else if (guess && isConnected()) queueMicrotask(() => runSearch(ctx));
   }
@@ -259,6 +265,12 @@ export function metronView(_params, ctx, query) {
           ),
         )
       : bubble(`Niets gevonden voor "${ui.q}". Probeer minder woorden, of alleen de naam van de serie.`);
+    if (ui.results.length) {
+      list = [
+        list,
+        h('p', { class: 'hint' }, 'Staat hij er niet tussen? Probeer een kortere zoekterm (bijv. alleen "Flash"), of vink hierboven "Ook series met losse nummers" aan. Niet elke trade staat al op Metron.'),
+      ];
+    }
   }
 
   return {
