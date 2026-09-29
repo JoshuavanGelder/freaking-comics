@@ -225,7 +225,7 @@ export function volumeView({ id }) {
         { class: 'vol-head' },
         h('div', { class: 'vol-head__side' }, cover(v, series, 'lg'), v.metronId
           ? null
-          : h('a', { class: 'btn btn--ghost', style: { fontSize: '12px', padding: '0 8px' }, href: isConnected() ? `#/zoeken?volume=${id}` : '#/instellingen' }, 'Koppel aan Metron')),
+          : h('a', { class: 'btn btn--ghost', style: { fontSize: '12px', padding: '0 8px' }, href: isConnected() ? `#/zoeken?volume=${id}` : '#/instellingen' }, 'Koppel online')),
         h(
           'div',
           { class: 'vol-head__info' },
@@ -289,7 +289,7 @@ export function volumeView({ id }) {
                   );
                 }),
               ]
-            : h('p', { class: 'hint' }, 'Nog geen issues ingevuld. Dat kan via Bewerken (bijv. "#1–8, Annual #1"); later vult Metron dit automatisch.'),
+            : h('p', { class: 'hint' }, 'Nog geen issues ingevuld. Dat kan via Bewerken (bijv. "#1–8, Annual #1"); of koppel het boek online, dan wordt het automatisch ingevuld.'),
         ),
         section(
           'Het verhaal gaat verder',
@@ -321,13 +321,13 @@ function metronBox(series) {
     return h(
       'a',
       { class: 'btn btn--ghost btn--block', href: isConnected() ? `#/zoeken?serie=${series.id}` : '#/instellingen' },
-      'Koppel aan Metron: covers, issues en nieuwe delen automatisch',
+      'Koppel online (Metron of Comic Vine): covers, issues en nieuwe delen automatisch',
     );
   }
   return h(
     'div',
     { class: 'next-box', style: { borderStyle: 'dashed' } },
-    h('div', { class: 'kicker' }, 'Gekoppeld aan Metron'),
+    h('div', { class: 'kicker' }, `Gekoppeld aan ${M.SOURCE_LABELS[series.metron.source || 'metron']}`),
     h('div', { class: 'sub' }, series.metron.name),
     h('p', { class: 'hint' }, 'Nieuwe delen verschijnen hier vanzelf; elke ochtend wordt gecontroleerd.'),
     isConnected()
@@ -343,7 +343,7 @@ function metronBox(series) {
           const { remove, restore } = M.planUnlink(getState(), series.id);
           const msg =
             `Koppeling met ${series.metron.name} ongedaan maken?\n\n` +
-            `${remove.length} ${remove.length === 1 ? 'deel' : 'delen'} die Metron heeft toegevoegd (en die je niet gelezen, gekocht of genoteerd hebt) worden weggehaald. ` +
+            `${remove.length} ${remove.length === 1 ? 'deel' : 'delen'} die ${M.SOURCE_LABELS[series.metron.source || 'metron']} heeft toegevoegd (en die je niet gelezen, gekocht of genoteerd hebt) worden weggehaald. ` +
             `${restore.length} ${restore.length === 1 ? 'eigen deel krijgt' : 'eigen delen krijgen'} weer hun oude gegevens. Je leesstatus blijft staan.`;
           if (!confirm(msg)) return;
           dispatch((s) => M.unlinkMetron(s, series.id), { undoable: true });

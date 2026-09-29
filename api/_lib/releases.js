@@ -1,6 +1,7 @@
-// Controle op nieuwe delen: vergelijkt je gekoppelde series met Metron en voegt ontbrekende delen toe.
+// Controle op nieuwe delen: vergelijkt je gekoppelde series met Metron of Comic Vine en voegt ontbrekende delen toe.
 import * as M from '../../js/model.js';
-import { listSeriesItems, getIssue } from './metron.js';
+import { listSeriesItems, getIssue, metronConfigured } from './metron.js';
+import { listVolumeIssues, comicVineConfigured } from './comicvine.js';
 
 /**
  * @param {object} state        je kast
@@ -14,30 +15,40 @@ export async function checkReleases(state, checks = {}, { deadline = Date.now() 
   const added = [];
   const linked = next.series
     .filter((s) => s.metron && s.metron.id)
+    .filter((s) => (s.metron.source === 'comicvine' ? comicVineConfigured() : metronConfigured()))
     .sort((a, b) => String(checks[a.id] || '').localeCompare(String(checks[b.id] || '')));
 
   let checkedSeries = 0;
   for (const series of linked) {
     if (Date.now() > deadline - 5_000) break;
-    const items = await listSeriesItems(series.metron.id, { fresh: true, deadline });
     const vols = M.volumesOf(next, series.id);
     const known = new Set(vols.map((v) => v.metronId).filter((x) => x != null));
-    // Details alleen ophalen voor delen die nog niet in je kast staan (of nog geen issues hebben).
-    const missing = items.filter((i) => !known.has(i.id));
-    const detailed = [];
-    for (const item of missing.slice(0, 10)) {
-      if (Date.now() > deadline - 5_000) break;
-      detailed.push(await getIssue(item.id, { deadline }).catch(() => item));
+    const format = M.formatForSource(next, series.id, series.metron.source, series.metron.type);
+    let payload;
+    let complete = true;
+
+    if (series.metron.source === 'comicvine') {
+      // Comic Vine levert de details meteen mee.
+      payload = await listVolumeIssues(series.metron.id, { fresh: true });
+    } else {
+      const items = await listSeriesItems(series.metron.id, { fresh: true, deadline });
+      // Details alleen ophalen voor delen die nog niet in je kast staan.
+      const missing = items.filter((i) => !known.has(i.id));
+      const detailed = [];
+      for (const item of missing.slice(0, 10)) {
+        if (Date.now() > deadline - 5_000) break;
+        detailed.push(await getIssue(item.id, { deadline }).catch(() => item));
+      }
+      const detailedIds = new Set(detailed.map((d) => d.id));
+      complete = missing.every((m) => detailedIds.has(m.id));
+      // Bestaande delen: lijstgegevens (cover, datum) bijwerken; nieuwe delen: met details.
+      payload = [...items.filter((i) => known.has(i.id)).map((i) => ({ ...i, title: '' })), ...detailed];
     }
-    const format = M.formatFromMetronType(series.metron.type);
-    // Bestaande delen: lijstgegevens (cover, datum) bijwerken; nieuwe delen: met details.
-    const detailedIds = new Set(detailed.map((d) => d.id));
-    const payload = [...items.filter((i) => known.has(i.id)).map((i) => ({ ...i, title: '' })), ...detailed];
+
     const r = M.applyMetronItems(next, series.id, payload, format, { markNew: true, now });
     next = r.state;
     added.push(...r.added);
-    // Alleen "klaar" als alle ontbrekende delen verwerkt zijn.
-    if (missing.every((m) => detailedIds.has(m.id))) nextChecks[series.id] = now;
+    if (complete) nextChecks[series.id] = now;
     checkedSeries += 1;
   }
   next = { ...next, releasesCheckedAt: now };

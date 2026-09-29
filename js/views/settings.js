@@ -5,7 +5,7 @@ import { h, backButton, topbar, toast, section, bubble, formatDate } from '../ui
 import { api, isConnected, getConnection, saveConnection, disconnect } from '../api.js';
 import { syncNow, syncStatus, fetchRemote } from '../sync.js';
 
-export const APP_VERSION = '0.2.0';
+export const APP_VERSION = '0.3.0';
 
 // Schermstatus van het koppel-formulier.
 const conn = { busy: false, error: null, choice: null, checking: false };
@@ -14,6 +14,7 @@ const MISSING = {
   secret: 'APP_SECRET (het app-wachtwoord)',
   storage: 'opslag (Upstash Redis koppelen in Vercel → Storage)',
   metron: 'METRON_TOKEN (of METRON_USERNAME + METRON_PASSWORD)',
+  comicvine: 'COMICVINE_API_KEY (Comic Vine-sleutel)',
 };
 
 async function connect(server, secret, rerender) {
@@ -73,7 +74,7 @@ function connectionSection(rerender) {
       'Sync & automatisch',
       null,
       h('p', { class: 'meta', style: { margin: 0 } }, h('span', { class: `sync-dot sync-dot--${st.state}`, 'aria-hidden': 'true' }), text),
-      h('p', { class: 'hint' }, `Je kast synct vanzelf tussen je apparaten. Elke ochtend kijkt de server op Metron of er nieuwe delen zijn${lastCheck ? `; laatst: ${formatDate(lastCheck.slice(0, 10))}` : ''}.`),
+      h('p', { class: 'hint' }, `Je kast synct vanzelf tussen je apparaten. Elke ochtend kijkt de server op Metron en Comic Vine of er nieuwe delen zijn${lastCheck ? `; laatst: ${formatDate(lastCheck.slice(0, 10))}` : ''}.`),
       h('button', { class: 'btn btn--yellow btn--block', type: 'button', disabled: st.state === 'syncing', onClick: () => syncNow() }, 'Nu synchroniseren'),
       h(
         'button',
@@ -109,7 +110,7 @@ function connectionSection(rerender) {
   return section(
     'Koppelen',
     null,
-    h('p', { class: 'hint' }, 'Koppel de app aan je server voor sync tussen apparaten, zoeken op Metron en automatisch nieuwe delen.'),
+    h('p', { class: 'hint' }, 'Koppel de app aan je server voor sync tussen apparaten, online zoeken (Metron en Comic Vine) en automatisch nieuwe delen.'),
     conn.error ? h('div', { class: 'error-box', role: 'alert' }, conn.error) : null,
     h(
       'form',
@@ -227,7 +228,7 @@ export function settingsView(_params, ctx) {
             'Alles wissen',
           ),
         ),
-        h('p', { class: 'hint', style: { textAlign: 'center' } }, `Freaking Comics ${APP_VERSION} · gegevens en covers via Metron (metron.cloud).`),
+        h('p', { class: 'hint', style: { textAlign: 'center' } }, `Freaking Comics ${APP_VERSION} · gegevens en covers via Metron (metron.cloud) en Comic Vine (comicvine.gamespot.com).`),
       ),
     ],
   };

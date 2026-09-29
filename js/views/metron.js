@@ -1,19 +1,25 @@
-// Zoeken op Metron en gegevens binnenhalen: een hele serie, of één los boek koppelen.
+// Zoeken op Metron of Comic Vine en gegevens binnenhalen: een hele serie, of één los boek koppelen.
 import * as M from '../model.js';
 import { getState, dispatch, undo } from '../store.js';
 import { api, isConnected } from '../api.js';
 import { h, icon, backButton, topbar, toast, bubble, section } from '../ui.js';
 
 // Schermstatus zolang je op deze pagina bent.
-const ui = { key: '', q: '', results: null, loading: false, error: null, job: null, pick: null, all: false };
+const ui = { key: '', q: '', results: null, loading: false, error: null, job: null, pick: null, all: false, source: 'metron' };
+
+const base = (source) => (source === 'comicvine' ? '/api/comicvine' : '/api/metron');
 
 function reset(key, q) {
-  Object.assign(ui, { key, q, results: null, loading: false, error: null, job: null, pick: null, all: false });
+  Object.assign(ui, { key, q, results: null, loading: false, error: null, job: null, pick: null, all: false, source: 'metron' });
 }
 
 const COLOR_BY_PUBLISHER = { DC: 'blue', Marvel: 'red', Image: 'yellow' };
 
 function describe(r) {
+  if (r.source === 'comicvine') {
+    const count = r.issueCount != null ? `${r.issueCount} ${r.issueCount === 1 ? 'nummer' : 'nummers'}` : '';
+    return [M.publisherFromMetron(r.publisher), r.year, count].filter(Boolean).join(' · ');
+  }
   const years = r.year ? `${r.year}${r.yearEnd ? `–${r.yearEnd}` : r.yearEnd === null ? '–' : ''}` : '';
   const count = r.issueCount != null ? `${r.issueCount} ${M.isCollectedType(r.type) ? (r.issueCount === 1 ? 'deel' : 'delen') : 'nummers'}` : '';
   return [r.type, M.publisherFromMetron(r.publisher), years, count].filter(Boolean).join(' · ');
@@ -34,14 +40,14 @@ async function fetchDetails(items, ctx, label) {
 }
 
 /** Haalt een Metron-serie binnen: in een bestaande serie (koppelen/bijwerken) of als nieuwe serie. */
-export async function importSeries(metronId, localSeriesId, ctx, { confirmed = false } = {}) {
+export async function importSeries(metronId, localSeriesId, ctx, { confirmed = false, source = 'metron' } = {}) {
   ui.error = null;
   ui.job = { label: 'Serie ophalen', done: 0, total: 1 };
   ctx.rerender();
   try {
-    const { series, items } = await api(`/api/metron/series?id=${metronId}`, { timeout: 90_000 });
-    const format = M.formatFromMetronType(series.type);
-    const collected = format !== 'issue';
+    const { series, items, detailed } = await api(`${base(source)}/series?id=${metronId}`, { timeout: 90_000 });
+    const format = M.formatForSource(getState(), localSeriesId, source, series.type);
+    const collected = source === 'comicvine' ? items.length <= 30 : format !== 'issue';
     if (!collected && !confirmed && items.length > 12) {
       const ok = confirm(
         `"${series.name}" is een serie met ${items.length} losse nummers, geen trades.\n\n` +
@@ -54,11 +60,13 @@ export async function importSeries(metronId, localSeriesId, ctx, { confirmed = f
       }
     }
     // Bij verzamelde edities zijn de details nodig (titel, welke issues erin zitten).
-    const details = collected && items.length ? await fetchDetails(items.slice(0, 60), ctx, 'Delen ophalen') : items;
-    const all = collected ? [...details, ...items.slice(60)] : items;
+    const needDetails = collected && !detailed && items.length;
+    const details = needDetails ? await fetchDetails(items.slice(0, 60), ctx, 'Delen ophalen') : items;
+    const all = needDetails ? [...details, ...items.slice(60)] : items;
     const existing = localSeriesId ? M.getSeries(getState(), localSeriesId) : null;
     const linkedAt = existing?.metron?.id === series.id && existing.metron.linkedAt ? existing.metron.linkedAt : new Date().toISOString();
-    const metron = { id: series.id, name: `${series.name}${series.type ? ` (${series.type})` : ''}`, type: series.type, linkedAt };
+    const label = source === 'comicvine' ? `${series.name}${series.year ? ` (${series.year})` : ''}` : `${series.name}${series.type ? ` (${series.type})` : ''}`;
+    const metron = { id: series.id, name: label, type: series.type, linkedAt, source };
 
     const result = dispatch((s) => {
       let st = s;
@@ -95,15 +103,17 @@ export async function importSeries(metronId, localSeriesId, ctx, { confirmed = f
   }
 }
 
-async function linkVolume(volumeId, item, type, ctx) {
+async function linkVolume(volumeId, item, type, ctx, source = 'metron') {
   ui.error = null;
   ui.job = { label: 'Gegevens ophalen', done: 0, total: 1 };
   ctx.rerender();
   try {
-    const { issues } = await api(`/api/metron/issues?ids=${item.id}`);
-    dispatch((s) => M.linkVolumeToMetron(s, volumeId, issues[0], M.formatFromMetronType(type)));
+    const full = source === 'comicvine' ? item : (await api(`/api/metron/issues?ids=${item.id}`)).issues[0];
+    const v = M.getVolume(getState(), volumeId);
+    const format = source === 'comicvine' ? v?.format || 'trade' : M.formatFromMetronType(type);
+    dispatch((s) => M.linkVolumeToMetron(s, volumeId, full, format), { undoable: true });
     ui.job = null;
-    toast('Gekoppeld aan Metron.');
+    toast(`Gekoppeld aan ${M.SOURCE_LABELS[source]}.`, { label: 'Ongedaan', run: () => { undo(); toast('Teruggezet.'); } });
     location.replace(`#/volume/${volumeId}`);
   } catch (err) {
     ui.job = null;
@@ -120,13 +130,17 @@ async function runSearch(ctx) {
   ui.pick = null;
   ctx.rerender();
   try {
-    const { results } = await api(`/api/metron/search?q=${encodeURIComponent(q)}${ui.all ? '&alles=1' : ''}`, { timeout: 90_000 });
+    const extra = ui.source === 'metron' && ui.all ? '&alles=1' : '';
+    const { results } = await api(`${base(ui.source)}/search?q=${encodeURIComponent(q)}${extra}`, { timeout: 90_000 });
     // Series uit dezelfde jaren als die in je kast eerst.
     const local = ui.seriesId ? M.getSeries(getState(), ui.seriesId) : null;
     const year = Number(String(local?.years || '').slice(0, 4)) || null;
-    ui.results = year
-      ? [...results].sort((a, b) => Math.abs((a.year || 0) - year) - Math.abs((b.year || 0) - year))
-      : results;
+    const have = local ? M.volumesOf(getState(), local.id).filter((v) => !v.isSide).length : 0;
+    // Hoe lager, hoe waarschijnlijker de juiste: zelfde jaren, en bij Comic Vine ongeveer evenveel nummers als jij delen hebt.
+    const score = (r) =>
+      (year ? Math.abs((r.year || 0) - year) : 0) +
+      (r.source === 'comicvine' && have ? Math.abs((r.issueCount ?? have) - have) / 2 + (r.issueCount > 30 ? 50 : 0) : 0);
+    ui.results = (year || have ? [...results].sort((a, b) => score(a) - score(b)) : results).slice(0, 30);
   } catch (err) {
     ui.error = err.message;
   }
@@ -138,13 +152,13 @@ async function openForVolume(result, volumeId, ctx) {
   ui.loading = true;
   ctx.rerender();
   try {
-    const { series, items } = await api(`/api/metron/series?id=${result.id}`);
+    const { series, items } = await api(`${base(ui.source)}/series?id=${result.id}`, { timeout: 90_000 });
     ui.loading = false;
     if (items.length === 1) {
-      await linkVolume(volumeId, items[0], series.type, ctx);
+      await linkVolume(volumeId, items[0], series.type, ctx, ui.source);
       return;
     }
-    ui.pick = { series, items };
+    ui.pick = { series, items, source: ui.source };
   } catch (err) {
     ui.loading = false;
     ui.error = err.message;
@@ -176,7 +190,8 @@ export function metronView(_params, ctx, query) {
     const guess = localVolume ? localVolume.title : localSeries ? localSeries.title : '';
     reset(key, guess);
     ui.seriesId = seriesId;
-    if (refresh && isConnected()) queueMicrotask(() => importSeries(localSeries.metron.id, localSeries.id, ctx));
+    if (refresh) ui.source = localSeries.metron.source || 'metron';
+    if (refresh && isConnected()) queueMicrotask(() => importSeries(localSeries.metron.id, localSeries.id, ctx, { confirmed: true, source: ui.source }));
     else if (guess && isConnected()) queueMicrotask(() => runSearch(ctx));
   }
 
@@ -185,14 +200,14 @@ export function metronView(_params, ctx, query) {
 
   if (!isConnected()) {
     return {
-      title: 'Zoeken op Metron · Freaking Comics',
+      title: 'Online zoeken · Freaking Comics',
       nav: 'kast',
       body: [
         topbar(backButton(back), label),
         h(
           'main',
           { class: 'main', id: 'main' },
-          bubble('Om op Metron te zoeken moet de app eerst met je server gekoppeld zijn.'),
+          bubble('Om online te zoeken moet de app eerst met je server gekoppeld zijn.'),
           h('a', { class: 'btn btn--ink btn--block', href: '#/instellingen' }, 'Naar koppelen'),
           localVolume || localSeries ? null : h('a', { class: 'btn btn--block', href: '#/serie/nieuw' }, 'Handmatig een serie toevoegen'),
         ),
@@ -211,11 +226,41 @@ export function metronView(_params, ctx, query) {
     onInput: (e) => { ui.q = e.target.value; },
   });
 
+  const cv = ui.source === 'comicvine';
   const intro = localVolume
-    ? `Zoek het boek "${localVolume.title}" op Metron. Je leesstatus en gelezen issues blijven gewoon staan.`
+    ? `Zoek het boek "${localVolume.title}". Je leesstatus en gelezen issues blijven gewoon staan.`
     : localSeries
-      ? `Kies de Metron-serie die bij "${localSeries.title}" hoort. Kies je trades? Pak dan de serie met "Trade Paperback". Je leesstatus blijft staan; ontbrekende delen worden toegevoegd.`
-      : 'Zoek een serie. Voor trades kies je de versie met "Trade Paperback" of "Hardcover".';
+      ? cv
+        ? `Kies de Comic Vine-reeks die bij "${localSeries.title}" hoort: dezelfde uitgever en jaren, met ongeveer evenveel nummers als jij delen hebt. Je leesstatus blijft staan.`
+        : `Kies de Metron-serie die bij "${localSeries.title}" hoort. Kies je trades? Pak dan de serie met "Trade Paperback". Je leesstatus blijft staan; ontbrekende delen worden toegevoegd.`
+      : cv
+        ? 'Zoek een reeks. Op Comic Vine is een trade-reeks meestal een reeks met weinig nummers (bijv. 9) met titels als "Move Forward".'
+        : 'Zoek een serie. Voor trades kies je de versie met "Trade Paperback" of "Hardcover".';
+
+  const sourceTabs = h(
+    'div',
+    { class: 'segmented', role: 'group', 'aria-label': 'Bron', style: { gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' } },
+    ['metron', 'comicvine'].map((src) =>
+      h(
+        'button',
+        {
+          type: 'button',
+          'aria-pressed': String(ui.source === src),
+          'data-key': `src-${src}`,
+          disabled: !!ui.job,
+          onClick: () => {
+            if (ui.source === src) return;
+            ui.source = src;
+            ui.results = null;
+            ui.pick = null;
+            ui.error = null;
+            runSearch(ctx);
+          },
+        },
+        M.SOURCE_LABELS[src],
+      ),
+    ),
+  );
 
   let list = null;
   if (ui.pick) {
@@ -229,7 +274,7 @@ export function metronView(_params, ctx, query) {
         ui.pick.items.map((item) =>
           h(
             'button',
-            { class: 'vol-row', type: 'button', style: { textAlign: 'left', width: '100%' }, onClick: () => linkVolume(localVolume.id, item, ui.pick.series.type, ctx) },
+            { class: 'vol-row', type: 'button', style: { textAlign: 'left', width: '100%' }, onClick: () => linkVolume(localVolume.id, item, ui.pick.series.type, ctx, ui.pick.source) },
             item.image ? h('img', { class: 'cover cover--sm', src: item.image, alt: '', loading: 'lazy' }) : h('div', { class: 'cover cover--sm dots-light', style: { backgroundColor: 'var(--ink)' } }, item.number),
             h('div', { class: 'vol-row__body' }, h('div', { class: 'vol-row__title' }, `#${item.number}${item.title ? ` · ${item.title}` : ''}`), h('div', { class: 'sub' }, item.store_date || '')),
             icon('chevron', { width: 3 }),
@@ -251,12 +296,14 @@ export function metronView(_params, ctx, query) {
                 type: 'button',
                 style: { textAlign: 'left', width: '100%' },
                 'data-key': `res-${r.id}`,
-                onClick: () => (localVolume ? openForVolume(r, localVolume.id, ctx) : importSeries(r.id, localSeries?.id, ctx)),
+                onClick: () => (localVolume ? openForVolume(r, localVolume.id, ctx) : importSeries(r.id, localSeries?.id, ctx, { source: ui.source })),
               },
               h(
                 'div',
                 { class: 'shelf-item__body' },
-                M.isCollectedType(r.type) ? h('span', { class: 'tag' }, r.type.toUpperCase()) : h('span', { class: 'tag tag--soon' }, 'LOSSE NUMMERS'),
+                r.source === 'comicvine'
+                  ? (r.issueCount > 30 ? h('span', { class: 'tag tag--soon' }, 'VEEL NUMMERS') : null)
+                  : M.isCollectedType(r.type) ? h('span', { class: 'tag' }, r.type.toUpperCase()) : h('span', { class: 'tag tag--soon' }, 'LOSSE NUMMERS'),
                 h('div', { class: 'title' }, r.name),
                 h('div', { class: 'sub' }, describe(r)),
               ),
@@ -268,19 +315,22 @@ export function metronView(_params, ctx, query) {
     if (ui.results.length) {
       list = [
         list,
-        h('p', { class: 'hint' }, 'Staat hij er niet tussen? Probeer een kortere zoekterm (bijv. alleen "Flash"), of vink hierboven "Ook series met losse nummers" aan. Niet elke trade staat al op Metron.'),
+        h('p', { class: 'hint' }, cv
+          ? 'Staat hij er niet tussen? Probeer een kortere zoekterm (bijv. alleen "Flash").'
+          : 'Staat hij er niet tussen? Probeer Comic Vine hierboven, een kortere zoekterm (bijv. alleen "Flash"), of vink "Ook series met losse nummers" aan.'),
       ];
     }
   }
 
   return {
-    title: 'Zoeken op Metron · Freaking Comics',
+    title: 'Online zoeken · Freaking Comics',
     nav: 'kast',
     body: [
       topbar(backButton(back, 'Terug'), label),
       h(
         'main',
         { class: 'main', id: 'main' },
+        refresh ? null : sourceTabs,
         h('p', { class: 'hint' }, intro),
         h(
           'form',
@@ -297,7 +347,7 @@ export function metronView(_params, ctx, query) {
           input,
           h('button', { class: 'btn btn--ink', type: 'submit', disabled: ui.loading || !!ui.job }, ui.loading ? '…' : 'Zoek'),
         ),
-        h(
+        cv ? null : h(
           'label',
           { class: 'check', for: 'f-all' },
           h('input', {

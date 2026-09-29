@@ -1,10 +1,10 @@
 # Freaking Comics
 
-Houd bij welke comics je gelezen hebt. Per serie een bladwijzer, altijd zichtbaar welk deel het volgende is, en een pop-art jasje. Gegevens en covers komen automatisch van [Metron](https://metron.cloud), je kast synct tussen je apparaten, en elke ochtend kijkt de server of er nieuwe delen zijn.
+Houd bij welke comics je gelezen hebt. Per serie een bladwijzer, altijd zichtbaar welk deel het volgende is, en een pop-art jasje. Gegevens en covers komen automatisch van [Metron](https://metron.cloud) of [Comic Vine](https://comicvine.gamespot.com), je kast synct tussen je apparaten, en elke ochtend kijkt de server of er nieuwe delen zijn.
 
 ## Wat de app kan
 
-- **Serie zoeken op Metron** en in één keer binnenhalen: alle delen, titels, covers, verschijningsdatums en welke issues erin zitten.
+- **Serie zoeken op Metron of Comic Vine** en in één keer binnenhalen: alle delen, titels, covers, verschijningsdatums en welke issues erin zitten. Metron is sterk in losse nummers en nieuwe uitgaven; Comic Vine heeft ook oudere trades (zoals The Flash New 52).
 - **Bestaande series en losse boeken koppelen** aan Metron. Je leesstatus, bezit en gelezen issues blijven altijd van jou.
 - **Bladwijzer per serie**: "Verder lezen" op Home, laatst gelezen bovenaan, met één tik op *Uit!* naar het volgende deel.
 - **Nieuwe delen automatisch**: elke ochtend om ±07:00 controleert de server je gekoppelde series. Nieuwe delen verschijnen op Home onder *Nieuw verschenen*; aangekondigde delen onder *Binnenkort*. Het aantal nieuwe delen staat ook als getal op het app-icoon (waar je telefoon dat ondersteunt).
@@ -24,6 +24,7 @@ De app draait op [Vercel](https://vercel.com) (gratis): daar staan de app, de ko
    | `METRON_TOKEN` | je Metron-token (geen token-knop op Metron? Gebruik dan `METRON_USERNAME` en `METRON_PASSWORD`) |
    | `APP_SECRET` | een wachtwoord dat je zelf kiest (lang en willekeurig) |
    | `CRON_SECRET` | nog een willekeurige tekst (beveiligt de dagelijkse controle) |
+   | `COMICVINE_API_KEY` | je Comic Vine-sleutel ([comicvine.gamespot.com/api](https://comicvine.gamespot.com/api/)), optioneel |
 5. **Opnieuw uitrollen**: *Deployments* → bij de bovenste ⋯ → *Redeploy*.
 6. **Op je telefoon**: open `https://<jouw-project>.vercel.app`, zet hem op je beginscherm (Deel → *Zet op beginscherm*) en ga naar **Mijn kast → ⚙ → Koppelen** met je `APP_SECRET`.
 
@@ -39,8 +40,8 @@ js/model.js                  datamodel, bladwijzer-logica, sync-samenvoegen, Met
 js/store.js, js/sync.js      opslag op het apparaat, automatische sync
 js/api.js                    praat met de server
 js/views/                    schermen
-api/                         serverfuncties (Vercel): status, sync, cron, metron/{search,series,issues}
-api/_lib/                    Metron-client (limieten + cache), opslag (Upstash REST), controle op nieuwe delen
+api/                         serverfuncties (Vercel): status, sync, cron, metron/{search,series,issues}, comicvine/{search,series}
+api/_lib/                    Metron- en Comic Vine-client (limieten + cache), opslag (Upstash REST), controle op nieuwe delen
 vercel.json                  dagelijkse taak en instellingen
 tools/dev-server.js          lokaal draaien, met nep-Metron en nep-opslag
 tests/                       node --test

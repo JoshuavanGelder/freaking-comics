@@ -366,6 +366,7 @@ function cleanMetronSeries(m) {
     name: String(m.name || ''),
     type: String(m.type || ''),
     linkedAt: typeof m.linkedAt === 'string' ? m.linkedAt : null,
+    source: m.source === 'comicvine' ? 'comicvine' : 'metron',
   };
 }
 
@@ -911,4 +912,15 @@ export function unlinkMetron(state, seriesId, now = nowIso()) {
     series: state.series.map((s) => (s.id === seriesId ? { ...s, metron: null, updatedAt: now } : s)),
     deleted: withDeleted(state, remove, now),
   };
+}
+
+export const SOURCE_LABELS = { metron: 'Metron', comicvine: 'Comic Vine' };
+
+/** Formaat voor delen uit een bron zonder serietype (Comic Vine): wat de serie al het meest heeft, anders trade. */
+export function formatForSource(state, seriesId, source, metronType) {
+  if (source !== 'comicvine') return formatFromMetronType(metronType);
+  const counts = {};
+  for (const v of volumesOf(state, seriesId)) if (v.format !== 'issue') counts[v.format] = (counts[v.format] || 0) + 1;
+  const best = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
+  return best ? best[0] : 'trade';
 }

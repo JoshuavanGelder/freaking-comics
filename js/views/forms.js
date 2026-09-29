@@ -84,7 +84,7 @@ export function serieFormView({ id } = {}) {
       },
     },
     !existing && isConnected()
-      ? h('a', { class: 'btn btn--yellow btn--block', href: '#/zoeken' }, 'Zoek op Metron (vult alles automatisch in)')
+      ? h('a', { class: 'btn btn--yellow btn--block', href: '#/zoeken' }, 'Zoek online (vult alles automatisch in)')
       : null,
     err,
     field('Titel', title),

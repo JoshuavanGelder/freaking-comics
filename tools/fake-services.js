@@ -37,6 +37,53 @@ for (let k = 1; k <= 52; k += 1) ISSUES.push({ id: 40000 + k, seriesId: 1000, nu
   ISSUES.push({ id: 30001 + i, seriesId: 3001, number: String(i + 1), title, store_date: `201${3 + i}-10-23`, reprints: [] });
 });
 
+// ---------------------------------------------------------------- nep-Comic Vine
+const CV_VOLUMES = [
+  { id: 1111, name: 'The Flash', start_year: '2012', publisher: { name: 'DC Comics' }, count_of_issues: 9 },
+  { id: 2222, name: 'The Flash', start_year: '2011', publisher: { name: 'DC Comics' }, count_of_issues: 52 },
+  { id: 3333, name: 'Ultimate Comics: Divided We Fall, United We Stand', start_year: '2013', publisher: { name: 'Marvel' }, count_of_issues: 1 },
+];
+const CV_ISSUES = [];
+FLASH_TITLES.forEach((title, i) => {
+  const first = [1, 9, 13, 20, 26, 30, 36, 41, 48][i];
+  const last = [8, 12, 19, 25, 29, 35, 40, 47, 52][i];
+  CV_ISSUES.push({ id: 700 + i, volume: 1111, issue_number: String(i + 1), name: title, cover_date: `201${2 + Math.floor(i / 2)}-06-01`, store_date: null,
+    description: `<p>The Speedster returns! <em>Collects THE FLASH #${first}-${last}${i === 5 ? ' and THE FLASH ANNUAL #3' : ''}.</em></p>` });
+});
+for (let k = 1; k <= 52; k += 1) CV_ISSUES.push({ id: 5000 + k, volume: 2222, issue_number: String(k), name: '', cover_date: '2012-01-01', description: '' });
+CV_ISSUES.push({ id: 9001, volume: 3333, issue_number: '1', name: '', cover_date: '2013-01-01', description: '<p>Collects Ultimate Comics Ultimates #13-18, Ultimate Comics X-Men #13-18, Ultimate Comics Spider-Man #13-18.</p>' });
+
+function cvIssue(i) {
+  const v = CV_VOLUMES.find((x) => x.id === i.volume);
+  return { ...i, volume: { id: v.id, name: v.name }, image: { super_url: `https://comicvine.gamespot.com/a/uploads/fake/${i.id}.jpg` } };
+}
+
+function comicvine(url) {
+  fake.calls.push(url.pathname + url.search);
+  const p = url.searchParams;
+  const ok = (results, extra = {}) => respond({ error: 'OK', status_code: 1, results, ...extra });
+  if (p.get('api_key') !== 'cv-test-key') return respond({ error: 'Invalid API Key', status_code: 100, results: [] });
+  const path = url.pathname.replace(/^\/api\//, '');
+  let m;
+  if (path === 'volumes/') {
+    const name = (p.get('filter') || '').replace(/^name:/, '').toLowerCase();
+    const found = CV_VOLUMES.filter((v) => v.name.toLowerCase().includes(name));
+    const offset = Number(p.get('offset') || 0);
+    return ok(found.slice(offset, offset + 100), { number_of_total_results: found.length });
+  }
+  if ((m = path.match(/^volume\/4050-(\d+)\/$/))) {
+    const v = CV_VOLUMES.find((x) => x.id === Number(m[1]));
+    return v ? ok(v) : respond({ error: 'Object Not Found', status_code: 101, results: [] });
+  }
+  if (path === 'issues/') {
+    const vol = Number((p.get('filter') || '').replace(/^volume:/, ''));
+    const all = CV_ISSUES.filter((i) => i.volume === vol).map(cvIssue);
+    const offset = Number(p.get('offset') || 0);
+    return ok(all.slice(offset, offset + 100), { number_of_total_results: all.length });
+  }
+  return respond({ error: 'Object Not Found', status_code: 101, results: [] });
+}
+
 export const fake = {
   calls: [],
   /** Voegt een nieuw deel toe aan een nep-serie (voor de "nieuwe delen"-test). */
@@ -110,6 +157,7 @@ async function upstash(init) {
 /** Vervangt globalThis.fetch voor metron.cloud en de nep-Redis; de rest gaat gewoon door. */
 export function installFakes() {
   process.env.METRON_TOKEN ||= 'test-token';
+  process.env.COMICVINE_API_KEY ||= 'cv-test-key';
   process.env.APP_SECRET ||= 'geheim';
   process.env.CRON_SECRET ||= 'cron-geheim';
   process.env.KV_REST_API_URL ||= 'https://fake-redis.local';
@@ -118,6 +166,7 @@ export function installFakes() {
   globalThis.fetch = async (input, init) => {
     const url = new URL(typeof input === 'string' || input instanceof URL ? input : input.url);
     if (url.hostname === 'metron.cloud') return metron(url, init);
+    if (url.hostname === 'comicvine.gamespot.com') return comicvine(url, init);
     if (url.hostname === 'fake-redis.local') return upstash(init);
     return real(input, init);
   };

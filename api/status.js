@@ -2,6 +2,7 @@
 import { json, preflight, handle, requireApp } from './_lib/http.js';
 import { storageConfigured } from './_lib/store.js';
 import { metronConfigured } from './_lib/metron.js';
+import { comicVineConfigured } from './_lib/comicvine.js';
 
 export const OPTIONS = preflight;
 
@@ -17,11 +18,12 @@ export const GET = handle(async (request) => {
   }
   return json({
     ok: true,
-    version: '0.2.0',
+    version: '0.3.0',
     configured: {
       secret: !!process.env.APP_SECRET,
       storage: storageConfigured(),
       metron: metronConfigured(),
+      comicvine: comicVineConfigured(),
       cron: !!process.env.CRON_SECRET,
     },
     authorized,

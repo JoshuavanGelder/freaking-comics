@@ -9,6 +9,8 @@ const search = await import('../api/metron/search.js');
 const seriesApi = await import('../api/metron/series.js');
 const issuesApi = await import('../api/metron/issues.js');
 const cron = await import('../api/cron.js');
+const cvSearch = await import('../api/comicvine/search.js');
+const cvSeries = await import('../api/comicvine/series.js');
 const M = await import('../js/model.js');
 const { seedState } = await import('../js/seed.js');
 
@@ -19,7 +21,7 @@ const body = async (res) => ({ status: res.status, ...(await res.json()) });
 test('status laat zien wat is ingesteld', async () => {
   const r = await body(await status.GET(req('/api/status', { headers: H })));
   assert.equal(r.authorized, true);
-  assert.deepEqual(r.configured, { secret: true, storage: true, metron: true, cron: true });
+  assert.deepEqual(r.configured, { secret: true, storage: true, metron: true, comicvine: true, cron: true });
   const bad = await body(await status.GET(req('/api/status', { headers: { 'x-app-secret': 'fout' } })));
   assert.equal(bad.authorized, false);
 });
@@ -134,4 +136,44 @@ test('Metron werkt ook met gebruikersnaam en wachtwoord', async () => {
     delete process.env.METRON_USERNAME;
     delete process.env.METRON_PASSWORD;
   }
+});
+
+test('Comic Vine: zoeken en een reeks met inhoud ophalen', async () => {
+  const r = await body(await cvSearch.GET(req('/api/comicvine/search?q=the%20flash', { headers: H })));
+  assert.equal(r.results.length, 2);
+  assert.equal(r.results[0].source, 'comicvine');
+  const s = await body(await cvSeries.GET(req('/api/comicvine/series?id=1111', { headers: H })));
+  assert.equal(s.detailed, true);
+  assert.equal(s.items.length, 9);
+  assert.equal(s.items[5].title, 'Out of Time');
+  assert.equal(s.items[5].reprints.length, 7);
+  assert.equal(s.items[5].reprints[6].issue, 'The Flash Annual #3');
+});
+
+test('Comic Vine: foute sleutel geeft een nette melding', async () => {
+  const key = process.env.COMICVINE_API_KEY;
+  process.env.COMICVINE_API_KEY = 'fout';
+  try {
+    const r = await cvSearch.GET(req('/api/comicvine/search?q=saga-onbekend', { headers: H }));
+    assert.equal(r.status, 502);
+  } finally {
+    process.env.COMICVINE_API_KEY = key;
+  }
+});
+
+test('cron: Comic Vine-reeks koppelt bestaande delen en vindt nieuwe', async () => {
+  fake.store.clear();
+  let state = seedState();
+  const flash = state.series.find((s) => s.title === 'The Flash');
+  state = M.updateSeries(state, flash.id, { metron: { id: 1111, name: 'The Flash (Comic Vine)', type: 'Comic Vine', source: 'comicvine' } });
+  await sync.POST(req('/api/sync', { method: 'POST', headers: H, body: JSON.stringify({ state }) }));
+  const first = await body(await cron.POST(req('/api/cron', { method: 'POST', headers: H })));
+  assert.equal(first.added.length, 0);
+  const stored = await body(await sync.GET(req('/api/sync', { headers: H })));
+  const vols = M.volumesOf(stored.state, flash.id);
+  assert.equal(vols.length, 9);
+  assert.ok(vols.every((v) => v.metronId && v.format === 'trade' && v.cover));
+  const v6 = vols.find((v) => v.number === '6');
+  assert.equal(M.formatIssues(v6.issues, 'The Flash'), '#30–35, Annual #3');
+  assert.equal(vols.filter((v) => v.readStatus === 'read').length, 5);
 });
