@@ -1,4 +1,4 @@
-// Diagnose (alleen met de CRON_SECRET als ?key=): laat zien wat er in de kast staat en wat een bron teruggeeft.
+// Diagnose en beheer (alleen met CRON_SECRET of CHAT_KEY als ?key=): laat zien wat er in de kast staat en wat een bron teruggeeft.
 // Bedoeld om problemen met gegevens uit Metron of Comic Vine te kunnen nazoeken.
 import { timingSafeEqual, createHash } from 'node:crypto';
 import { json, handle, HttpError } from './_lib/http.js';
@@ -8,12 +8,16 @@ import { metronGet, findIssueSeries, listSeriesItems } from './_lib/metron.js';
 import { refreshRecs } from './aanraders.js';
 import { addComicVine, changeVolume, changeSeries, removeSeries } from './_lib/beheer.js';
 
-function allowed(key) {
-  const secret = process.env.CRON_SECRET;
+function same(key, secret) {
   if (!secret || !key) return false;
   const a = createHash('sha256').update(key).digest();
   const b = createHash('sha256').update(secret).digest();
   return timingSafeEqual(a, b);
+}
+
+// CRON_SECRET, of CHAT_KEY: een aparte sleutel voor Claude in de chat (los te vervangen).
+function allowed(key) {
+  return same(key, process.env.CRON_SECRET) || same(key, process.env.CHAT_KEY);
 }
 
 export const GET = handle(async (request) => {
