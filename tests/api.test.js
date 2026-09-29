@@ -9,10 +9,11 @@ const search = await import('../api/metron/search.js');
 const seriesApi = await import('../api/metron/series.js');
 const issuesApi = await import('../api/metron/issues.js');
 const cron = await import('../api/cron.js');
+const reset = await import('../api/reset.js');
 const cvSearch = await import('../api/comicvine/search.js');
 const cvSeries = await import('../api/comicvine/series.js');
 const M = await import('../js/model.js');
-const { seedState } = await import('../js/seed.js');
+const { seedState } = await import('./fixtures/seed.js');
 
 const H = { 'x-app-secret': 'geheim' };
 const req = (path, init = {}) => new Request(`http://localhost${path}`, init);
@@ -176,4 +177,27 @@ test('cron: Comic Vine-reeks koppelt bestaande delen en vindt nieuwe', async () 
   const v6 = vols.find((v) => v.number === '6');
   assert.equal(M.formatIssues(v6.issues, 'The Flash'), '#30–35, Annual #3');
   assert.equal(vols.filter((v) => v.readStatus === 'read').length, 5);
+});
+
+test('alles wissen: server leeg, oude apparaten nemen de lege kast over', async () => {
+  fake.store.clear();
+  const phone = seedState();
+  const first = await body(await sync.POST(req('/api/sync', { method: 'POST', headers: H, body: JSON.stringify({ state: phone }) })));
+  assert.equal(first.state.series.length, 2);
+  const wiped = await body(await reset.POST(req('/api/reset', { method: 'POST', headers: H })));
+  assert.ok(wiped.epoch);
+  assert.equal(wiped.state.series.length, 0);
+  // Een apparaat met oude gegevens en zonder epoch krijgt de lege kast terug
+  const old = await body(await sync.POST(req('/api/sync', { method: 'POST', headers: H, body: JSON.stringify({ state: phone }) })));
+  assert.equal(old.reset, true);
+  assert.equal(old.state.series.length, 0);
+  // Met de juiste epoch wordt gewoon samengevoegd
+  let fresh = M.emptyState();
+  fresh = M.addSeries(fresh, { title: 'Saga' }).state;
+  const ok = await body(await sync.POST(req('/api/sync', { method: 'POST', headers: H, body: JSON.stringify({ state: fresh, epoch: wiped.epoch }) })));
+  assert.equal(ok.reset, undefined);
+  assert.deepEqual(ok.state.series.map((s) => s.title), ['Saga']);
+  // Bewust samenvoegen bij koppelen (join) mag ook zonder epoch
+  const joined = await body(await sync.POST(req('/api/sync', { method: 'POST', headers: H, body: JSON.stringify({ state: M.addSeries(M.emptyState(), { title: 'Hunger' }).state, join: true }) })));
+  assert.equal(joined.state.series.length, 2);
 });

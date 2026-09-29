@@ -1,6 +1,6 @@
-// Startdata: wat er in plan-en-beslissingen.md staat over je leesstapel.
-// Wordt alleen geladen bij de allereerste start (of via Instellingen).
-import { addSeries, addVolume, parseIssues, setReadStatus, emptyState } from './model.js';
+// Testdata (alleen voor de tests): de leesstapel uit plan-en-beslissingen.md.
+// De app zelf start leeg; alles komt via Metron of Comic Vine.
+import { addSeries, addVolume, parseIssues, setReadStatus, emptyState } from '../../js/model.js';
 
 export function seedState() {
   let state = emptyState();

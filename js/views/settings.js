@@ -1,11 +1,11 @@
 // Instellingen: back-up maken/terugzetten, startdata, alles wissen, app installeren.
-import { getState, exportJson, importJson, resetToSeed, replaceAll, isStorageOk, setFromSync } from '../store.js';
+import { getState, exportJson, importJson, replaceAll, isStorageOk, setFromSync, wipeLocal } from '../store.js';
 import { emptyState } from '../model.js';
 import { h, backButton, topbar, toast, section, bubble, formatDate } from '../ui.js';
 import { api, isConnected, getConnection, saveConnection, disconnect } from '../api.js';
-import { syncNow, syncStatus, fetchRemote } from '../sync.js';
+import { syncNow, syncStatus, fetchRemote, setEpoch } from '../sync.js';
 
-export const APP_VERSION = '0.4.0';
+export const APP_VERSION = '0.5.0';
 
 // Schermstatus van het koppel-formulier.
 const conn = { busy: false, error: null, choice: null, checking: false };
@@ -33,10 +33,12 @@ async function connect(server, secret, rerender) {
     if (remote.state && remote.state.series.length && getState().series.length) {
       conn.choice = remote;
     } else if (remote.state && remote.state.series.length) {
+      setEpoch(remote.epoch || null);
       setFromSync(remote.state);
       toast('Gekoppeld! Je kast is binnengehaald.');
     } else {
-      await syncNow();
+      setEpoch(remote.epoch || null);
+      await syncNow({ join: true });
       toast('Gekoppeld! Je kast staat nu ook op de server.');
     }
     if (missing.length) toast(`Gekoppeld, maar nog niet ingesteld: ${missing.join(', ')}.`);
@@ -54,8 +56,8 @@ function connectionSection(rerender) {
       'Welke kast?',
       null,
       bubble(`Op de server staat al een kast met ${remote.series.length} series en ${remote.volumes.length} volumes. Wat wil je op dit apparaat?`),
-      h('button', { class: 'btn btn--ink btn--block', type: 'button', onClick: () => { setFromSync(remote); conn.choice = null; toast('Kast van de server gebruikt.'); syncNow(); } }, 'Kast van de server gebruiken'),
-      h('button', { class: 'btn btn--block', type: 'button', onClick: () => { conn.choice = null; syncNow(); toast('Samengevoegd.'); } }, 'Samenvoegen met wat hier staat'),
+      h('button', { class: 'btn btn--ink btn--block', type: 'button', onClick: () => { setEpoch(conn.choice.epoch || null); setFromSync(remote); conn.choice = null; toast('Kast van de server gebruikt.'); syncNow(); } }, 'Kast van de server gebruiken'),
+      h('button', { class: 'btn btn--block', type: 'button', onClick: () => { setEpoch(conn.choice.epoch || null); conn.choice = null; syncNow({ join: true }); toast('Samengevoegd.'); } }, 'Samenvoegen met wat hier staat'),
       h('p', { class: 'hint' }, 'Nieuw apparaat? Kies "van de server". Samenvoegen kan dubbele series opleveren als je op beide dezelfde startdata had.'),
     );
   }
@@ -199,30 +201,30 @@ export function settingsView(_params, ctx) {
         section(
           'Opnieuw beginnen',
           null,
-          h(
-            'button',
-            {
-              class: 'btn btn--block',
-              type: 'button',
-              onClick: () => {
-                if (!confirm('Je kast vervangen door de startdata (The Flash en Ultimate Comics)?')) return;
-                resetToSeed();
-                toast('Startdata teruggezet.');
-                location.hash = '#/';
-              },
-            },
-            'Startdata terugzetten',
-          ),
+          h('p', { class: 'hint' }, isConnected()
+            ? 'Wist je kast op de server en op al je gekoppelde apparaten. Maak eerst een back-up als je twijfelt.'
+            : 'Wist je kast op dit apparaat. Maak eerst een back-up als je twijfelt.'),
           h(
             'button',
             {
               class: 'btn btn--ghost btn--block',
               type: 'button',
-              onClick: () => {
-                if (!confirm('Echt alles wissen? Maak eerst een back-up als je twijfelt.')) return;
-                replaceAll(emptyState());
-                toast('Je kast is leeg.');
-                location.hash = '#/';
+              'data-key': 'wipe',
+              onClick: async () => {
+                if (!confirm('Echt alles wissen? Dit kan niet ongedaan worden gemaakt (behalve met een back-upbestand).')) return;
+                try {
+                  if (isConnected()) {
+                    const res = await api('/api/reset', { method: 'POST', body: {} });
+                    setEpoch(res.epoch);
+                    wipeLocal();
+                  } else {
+                    replaceAll(emptyState());
+                  }
+                  toast('Je kast is leeg. Voeg series toe via de + op Home.');
+                  location.hash = '#/';
+                } catch (err) {
+                  toast(err.message);
+                }
               },
             },
             'Alles wissen',

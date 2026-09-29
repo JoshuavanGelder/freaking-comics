@@ -69,6 +69,12 @@ function comicvine(url) {
   if (p.get('api_key') !== 'cv-test-key') return respond({ error: 'Invalid API Key', status_code: 100, results: [] });
   const path = url.pathname.replace(/^\/api\//, '');
   let m;
+  if (path === 'search/') {
+    const words = (p.get('query') || '').toLowerCase().split(/\s+/).filter((w) => w && !['the', 'a'].includes(w));
+    const found = CV_VOLUMES.filter((v) => words.every((w) => v.name.toLowerCase().includes(w)));
+    const page = Number(p.get('page') || 1);
+    return ok(found.slice((page - 1) * 10, page * 10), { number_of_total_results: found.length });
+  }
   if (path === 'volumes/') {
     const name = (p.get('filter') || '').replace(/^name:/, '').toLowerCase();
     const found = CV_VOLUMES.filter((v) => v.name.toLowerCase().includes(name));

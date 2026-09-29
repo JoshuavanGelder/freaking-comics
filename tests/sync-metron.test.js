@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as M from '../js/model.js';
-import { seedState } from '../js/seed.js';
+import { seedState } from './fixtures/seed.js';
 
 const T1 = '2026-09-01T10:00:00.000Z';
 const T2 = '2026-09-02T10:00:00.000Z';
@@ -220,37 +220,39 @@ test('unlinkMetron: oude koppeling zonder markeringen (zoals vanochtend)', () =>
   assert.ok(vols.every((v) => v.format === 'trade' && v.metronId == null && v.cover == null));
 });
 
-test('leesroute: zijverhalen, + Toch lezen, alleen hoofdverhaal', () => {
+function routeFixture() {
   let s = seedState();
   const ult = s.series.find((x) => x.title === 'Ultimate Comics');
-  const r = M.applyRouteTemplate(s, ult.id, M.ULTIMATE_ROUTE, T3);
-  s = r.state;
-  assert.equal(r.added, 10);
-  assert.equal(r.matched, 2);
-  const vols = M.volumesOf(s, ult.id);
-  assert.equal(vols.length, 12);
-  assert.equal(vols[0].title, 'Ultimate Fallout');
-  assert.equal(vols[6].title, 'Divided We Fall, United We Stand');
-  assert.equal(vols[6].readStatus, 'reading');
-  assert.equal(vols[6].issues.length, 18);
-  const iron = vols.find((v) => v.title.includes('Iron Man'));
-  assert.equal(iron.kind, 'side');
-  assert.equal(iron.readStatus, 'read');
-  // Route: 3 events + 4 hoofdverhaal + Iron Man (gelezen) = 8
-  assert.equal(M.routeVolumes(s, ult.id).length, 8);
-  const hawkeye = vols.find((v) => v.title.includes('Hawkeye'));
+  const add = (title, kind, issues = '') => {
+    const r = M.addVolume(s, { seriesId: ult.id, title, kind, position: M.nextPosition(s, ult.id), issues: M.parseIssues(issues, '').issues }, T3);
+    s = r.state;
+    return r.id;
+  };
+  add('Hawkeye', 'side', 'Hawkeye #1-4');
+  add('Cataclysm', 'event');
+  add('Ultimates vanaf #19', 'main');
+  // Iron Man (gelezen) is een zijverhaal
+  const iron = s.volumes.find((v) => v.title.includes('Iron Man'));
+  s = M.setVolumeKind(s, iron.id, 'side', T3);
+  return { s, ult };
+}
+
+test('leesroute: zijverhalen, + Toch lezen, alleen hoofdverhaal', () => {
+  let { s, ult } = routeFixture();
+  // DWF, Cataclysm, vanaf #19 + Iron Man (gelezen) = 4; Hawkeye niet
+  assert.equal(M.routeVolumes(s, ult.id).length, 4);
+  const hawkeye = M.volumesOf(s, ult.id).find((v) => v.title === 'Hawkeye');
   s = M.setInRoute(s, hawkeye.id, true, T3);
-  assert.equal(M.routeVolumes(s, ult.id).length, 9);
+  assert.equal(M.routeVolumes(s, ult.id).length, 5);
+  s = M.setInRoute(s, hawkeye.id, false, T3);
   s = M.setMainOnly(s, ult.id, false, T3);
-  assert.equal(M.routeVolumes(s, ult.id).length, 12);
+  assert.equal(M.routeVolumes(s, ult.id).length, 5);
   s = M.setMainOnly(s, ult.id, true, T3);
-  // Bladwijzer: DWF (bezig)
   assert.equal(M.nextUp(s, ult.id).title, 'Divided We Fall, United We Stand');
-  s = M.setReadStatus(s, vols[6].id, 'read', T3);
-  // Daarna: Wolverine is zijverhaal (niet in route) → vanaf #19
-  assert.equal(M.nextUp(s, ult.id).title, 'Ultimates, X-Men en Spider-Man vanaf #19');
-  // Nogmaals toepassen voegt niets dubbel toe
-  assert.equal(M.applyRouteTemplate(s, ult.id, M.ULTIMATE_ROUTE, T3).added, 0);
+  const dwf = M.nextUp(s, ult.id);
+  s = M.setReadStatus(s, dwf.id, 'read', T3);
+  // Iron Man staat vóór DWF? Nee: na DWF volgt Hawkeye (zijverhaal, overgeslagen), dan Cataclysm
+  assert.equal(M.nextUp(s, ult.id).title, 'Cataclysm');
 });
 
 test('moveVolume wisselt twee delen van plek', () => {
@@ -303,8 +305,9 @@ test('addVolumeFromSource: los boek met cover en issues', () => {
 test('reeks in leesroute vervangt het algemene routedeel en slaat dubbele inhoud over', () => {
   let s = seedState();
   const ult = s.series.find((x) => x.title === 'Ultimate Comics');
-  s = M.applyRouteTemplate(s, ult.id, M.ULTIMATE_ROUTE, T3).state;
-  const posGeneric = M.volumesOf(s, ult.id).find((v) => v.title === 'Ultimate Comics X-Men Vol. 1–2').position;
+  const g = M.addVolume(s, { seriesId: ult.id, title: 'Ultimate Comics X-Men Vol. 1–2', position: 0.5, issues: M.parseIssues('Ultimate Comics X-Men #1–12', '').issues }, T3);
+  s = g.state;
+  const posGeneric = 0.5;
   const items = [
     { id: 1, number: '1', title: 'Blood', reprints: [1, 2, 3, 4, 5, 6].map((n) => ({ issue: `Ultimate Comics X-Men #${n}` })) },
     { id: 2, number: '2', title: 'Divided We Fall', reprints: [13, 14, 15, 16, 17, 18].map((n) => ({ issue: `Ultimate Comics X-Men #${n}` })) },
@@ -318,4 +321,22 @@ test('reeks in leesroute vervangt het algemene routedeel en slaat dubbele inhoud
   const blood = M.volumesOf(s, ult.id).find((v) => v.title === 'X-Men Vol. 1: Blood');
   assert.ok(blood.position > posGeneric && blood.position < posGeneric + 1);
   assert.equal(titles.indexOf('X-Men Vol. 1: Blood') + 1, titles.indexOf('X-Men Vol. 3: Two'));
+});
+
+test('leesroute op datum: nieuw boek komt op zijn plek, sorteren op datum', () => {
+  let s = M.emptyState();
+  const r0 = M.addSeries(s, { title: 'Ultimate Comics' });
+  s = r0.state;
+  const id = r0.id;
+  s = M.addVolumeFromSource(s, id, { id: 1, number: '1', title: 'Fallout', store_date: '2011-08-01' }, 'trade', { now: T3 }).state;
+  s = M.addVolumeFromSource(s, id, { id: 2, number: '1', title: 'Cataclysm', store_date: '2014-05-01' }, 'trade', { now: T3 }).state;
+  s = M.addVolumeFromSource(s, id, { id: 3, number: '1', title: 'Divided', store_date: '2013-01-02' }, 'trade', { now: T3 }).state;
+  assert.deepEqual(M.volumesOf(s, id).map((v) => v.title), ['Fallout', 'Divided', 'Cataclysm']);
+  // Handmatig een deel zonder datum achteraan, en een verkeerd geplaatst deel
+  s = M.addVolume(s, { seriesId: id, title: 'Zonder datum', position: 1.5 }, T3).state;
+  const cat = M.volumesOf(s, id).find((v) => v.title === 'Cataclysm');
+  s = M.moveVolume(s, cat.id, -1, T3);
+  s = M.moveVolume(s, M.volumesOf(s, id).find((v) => v.title === 'Cataclysm').id, -1, T3);
+  s = M.sortByDate(s, id, T3);
+  assert.deepEqual(M.volumesOf(s, id).map((v) => v.title), ['Fallout', 'Divided', 'Zonder datum', 'Cataclysm']);
 });

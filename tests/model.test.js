@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as M from '../js/model.js';
-import { seedState } from '../js/seed.js';
+import { seedState } from './fixtures/seed.js';
 
 const T = '2026-01-01T00:00:00.000Z';
 

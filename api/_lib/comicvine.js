@@ -130,25 +130,24 @@ function simplifyIssue(i, volumeName) {
 const VOLUME_FIELDS = 'id,name,start_year,publisher,count_of_issues,image';
 const ISSUE_FIELDS = 'id,name,issue_number,cover_date,store_date,image,description,volume';
 
+/**
+ * Zoekt reeksen op Comic Vine. De zoekfunctie van Comic Vine sorteert op relevantie; we nemen de
+ * eerste 30. Vindt die niets, dan zoeken we nog op naam.
+ */
 export async function searchVolumes(q) {
-  const variants = [q];
-  const bare = q.replace(/^(the|a|an|de|het)\s+/i, '').trim();
-  if (bare && bare.toLowerCase() !== q.toLowerCase()) variants.push(bare);
-  const seen = new Map();
-  for (const name of variants) {
-    // Populaire namen ("The Flash") hebben honderden reeksen; we halen er max. 300 op en sorteren in de app.
-    const data = await cached(`fc:cv:search:${name.toLowerCase()}`, 86400, async () => {
-      const all = [];
-      for (let offset = 0; offset < 300; offset += 100) {
-        const d = await cvGet('volumes/', { filter: `name:${name}`, field_list: VOLUME_FIELDS, limit: 100, offset, sort: 'start_year:asc' });
-        all.push(...(d.results || []));
-        if (all.length >= (d.number_of_total_results || 0) || !(d.results || []).length) break;
-      }
-      return all;
-    });
-    for (const v of data) seen.set(v.id, simplifyVolume(v));
-  }
-  return [...seen.values()];
+  return cached(`fc:cv:search2:${q.toLowerCase()}`, 86400, async () => {
+    const seen = new Map();
+    for (let page = 1; page <= 3; page += 1) {
+      const d = await cvGet('search/', { query: q, resources: 'volume', field_list: VOLUME_FIELDS, limit: 10, page });
+      for (const v of d.results || []) seen.set(v.id, simplifyVolume(v));
+      if ((d.results || []).length < 10 || seen.size >= (d.number_of_total_results || 0)) break;
+    }
+    if (!seen.size) {
+      const d = await cvGet('volumes/', { filter: `name:${q}`, field_list: VOLUME_FIELDS, limit: 100 });
+      for (const v of d.results || []) seen.set(v.id, simplifyVolume(v));
+    }
+    return [...seen.values()];
+  });
 }
 
 export async function getVolume(id) {

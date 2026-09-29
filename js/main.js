@@ -2,7 +2,7 @@
 import { load, subscribe, getState } from './store.js';
 import { newVolumes, isReleased } from './model.js';
 import { startSync, onSyncStatus } from './sync.js';
-import { metronView } from './views/metron.js';
+import { metronView, reeksView } from './views/metron.js';
 import { h, nav } from './ui.js';
 import { homeView } from './views/home.js';
 import { kastView, wishlistView } from './views/lists.js';
@@ -17,6 +17,7 @@ const routes = [
   [/^\/verlanglijst$/, () => wishlistView()],
   [/^\/instellingen$/, (_m, ctx) => settingsView({}, ctx)],
   [/^\/zoeken$/, (_m, ctx, q) => metronView({}, ctx, q)],
+  [/^\/reeks\/(metron|comicvine)\/(\d+)$/, (m, ctx, q) => reeksView({ source: m[1], id: m[2] }, ctx, q)],
   [/^\/toevoegen$/, (_m, ctx, q) => volumeFormView({}, ctx, q)],
   [/^\/serie\/nieuw$/, () => serieFormView()],
   [/^\/serie\/([\w-]+)\/bewerken$/, (m) => serieFormView({ id: m[1] })],

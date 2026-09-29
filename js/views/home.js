@@ -113,8 +113,12 @@ export function homeView() {
         h(
           'main',
           { class: 'main', id: 'main' },
-          bubble('Je kast is nog leeg!', 'Begin met de serie die je nu leest. Daarna houdt de app bij welk deel het volgende is.'),
-          h('a', { class: 'btn btn--ink btn--big btn--block', href: '#/serie/nieuw' }, 'Eerste serie toevoegen'),
+          isConnected()
+            ? bubble('Je kast is nog leeg!', 'Zoek de serie die je nu leest. Je kiest zelf tot welk deel je gelezen hebt; daarna houdt de app bij wat het volgende is.')
+            : bubble('Je kast is nog leeg!', 'Koppel eerst de app aan je server, dan zoek je series op via Metron en Comic Vine.'),
+          isConnected()
+            ? h('a', { class: 'btn btn--ink btn--big btn--block', href: '#/zoeken' }, 'Serie zoeken')
+            : h('a', { class: 'btn btn--ink btn--big btn--block', href: '#/instellingen' }, 'Koppelen'),
         ),
       ],
     };

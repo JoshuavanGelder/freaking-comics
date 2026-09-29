@@ -1,6 +1,5 @@
 // Opslag: houdt de state bij, bewaart hem in localStorage en seint de UI bij wijzigingen.
 import { normalizeState, emptyState, adoptState } from './model.js';
-import { seedState } from './seed.js';
 
 const KEY = 'freaking-comics:v1';
 
@@ -30,12 +29,12 @@ export function load() {
       return { fresh: false };
     }
   } catch {
-    // Kapotte opslag: begin opnieuw met de startdata, maar gooi de oude niet weg.
+    // Kapotte opslag: begin opnieuw met een lege kast, maar gooi de oude niet weg.
     try {
       localStorage.setItem(`${KEY}:kapot:${Date.now()}`, localStorage.getItem(KEY) || '');
     } catch { /* niets aan te doen */ }
   }
-  state = seedState();
+  state = emptyState();
   save();
   return { fresh: true };
 }
@@ -102,6 +101,10 @@ export function replaceAll(next) {
   notify();
 }
 
-export function resetToSeed() {
-  replaceAll(seedState());
+/** Leeg de kast op dit apparaat zonder verwijder-markeringen (na een reset op de server). */
+export function wipeLocal() {
+  state = emptyState();
+  undoSnapshot = null;
+  save();
+  notify('sync');
 }

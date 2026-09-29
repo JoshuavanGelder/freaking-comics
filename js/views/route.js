@@ -62,7 +62,6 @@ export function routeView({ id }, ctx) {
   const isEditing = editing.has(id);
   const next = M.nextUp(state, id);
   const badge = [series.publisher, series.line].filter(Boolean).join(' · ').toUpperCase();
-  const canUseUltimate = /ultimate/i.test(series.title) && !vols.some((v) => /cataclysm/i.test(v.title));
 
   const rows = vols.map((v, i) => {
     const included = M.inRoute(series, v);
@@ -163,31 +162,28 @@ export function routeView({ id }, ctx) {
             : 'Je ziet de complete leesroute, inclusief alle zijverhalen.'),
         ),
         isEditing
-          ? bubble('Zet delen op de goede plek met de pijltjes en kies per deel of het hoofdverhaal, een zijverhaal of een event is. Tik op ✓ als je klaar bent.')
+          ? bubble('Zet delen op de goede plek met de pijltjes, of alles in één keer op verschijningsdatum. Kies per deel: hoofdverhaal, zijverhaal of event. Tik op ✓ als je klaar bent.')
           : null,
-        canUseUltimate
+        isEditing
           ? h(
-              'div',
-              { class: 'next-box', style: { borderStyle: 'dashed' } },
-              h('div', { class: 'title' }, 'Volledige Ultimate-leesroute invullen?'),
-              h('p', { class: 'hint' }, 'Van Ultimate Fallout tot Cataclysm (2011–2014), 12 delen met hoofdverhaal, zijverhalen en events. Wat al in je kast staat blijft staan, met je leesstatus.'),
-              h(
-                'button',
-                {
-                  class: 'btn btn--yellow',
-                  type: 'button',
-                  'data-key': 'ultimate-template',
-                  onClick: () => {
-                    const r = dispatch((s) => M.applyRouteTemplate(s, id, M.ULTIMATE_ROUTE), { undoable: true });
-                    toast(`Leesroute ingevuld: ${r.added} delen toegevoegd.`, UNDO);
-                  },
-                },
-                'Leesroute invullen',
-              ),
+              'button',
+              {
+                class: 'btn btn--block',
+                type: 'button',
+                'data-key': 'sort-date',
+                onClick: () => { dispatch((s) => M.sortByDate(s, id), { undoable: true }); toast('Op verschijningsdatum gezet.', UNDO); },
+              },
+              'Zet alles op verschijningsdatum',
             )
           : null,
-        vols.length ? h('div', { class: 'stack' }, rows) : bubble('Deze serie heeft nog geen delen.'),
-        h('a', { class: 'btn btn--block', href: `#/volume/nieuw?serie=${id}` }, icon('plus', { size: 18, width: 3 }), 'Deel toevoegen'),
+        vols.length ? h('div', { class: 'stack' }, rows) : bubble('Deze route is nog leeg. Voeg boeken of hele reeksen toe; ze komen vanzelf op verschijningsdatum te staan.'),
+        h(
+          'div',
+          { class: 'row' },
+          h('a', { class: 'btn', style: { flex: '1' }, href: `#/zoeken?toevoegen=${id}` }, icon('plus', { size: 18, width: 3 }), 'Boek'),
+          h('a', { class: 'btn', style: { flex: '1' }, href: `#/zoeken?serie=${id}&extra=1` }, icon('plus', { size: 18, width: 3 }), 'Reeks'),
+        ),
+        h('p', { class: 'hint' }, 'Tik op ✏️ om de volgorde aan te passen of per deel te kiezen: hoofdverhaal, zijverhaal of event.'),
       ),
     ],
   };

@@ -18,7 +18,9 @@ async function run(request) {
   // Opnieuw lezen en samenvoegen: er kan tijdens de controle gesynct zijn.
   const latest = (await getJson(KEYS.state)) || stored;
   const merged = mergeStates(latest.state, result.state);
-  const record = { rev: (latest.rev || 0) + 1, updatedAt: new Date().toISOString(), state: merged };
+  // Is de kast intussen gewist? Dan niets terugzetten.
+  if (latest.epoch !== stored.epoch) return json({ ok: true, added: [], message: 'De kast is intussen gewist.' });
+  const record = { rev: (latest.rev || 0) + 1, updatedAt: new Date().toISOString(), epoch: latest.epoch || null, state: merged };
   await setJson(KEYS.state, record);
   return json({
     ok: true,

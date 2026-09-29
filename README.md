@@ -4,12 +4,13 @@ Houd bij welke comics je gelezen hebt. Per serie een bladwijzer, altijd zichtbaa
 
 ## Wat de app kan
 
-- **Serie zoeken op Metron of Comic Vine** en in één keer binnenhalen: alle delen, titels, covers, verschijningsdatums en welke issues erin zitten. Metron is sterk in losse nummers en nieuwe uitgaven; Comic Vine heeft ook oudere trades (zoals The Flash New 52).
-- **Bestaande series en losse boeken koppelen** aan Metron. Je leesstatus, bezit en gelezen issues blijven altijd van jou.
+- **Alles via de API's**: de app start leeg en bevat geen voorbeelddata. Je zoekt in één keer op Metron én Comic Vine, bekijkt eerst wat er in een reeks zit, en kiest bij het toevoegen tot welk deel je gelezen hebt. Metron is sterk in losse nummers en nieuwe uitgaven; Comic Vine heeft ook oudere trades (zoals The Flash New 52).
+- **Bestaande series en losse boeken koppelen**, ook meerdere reeksen per serie (bijv. Ultimates, X-Men en Spider-Man in "Ultimate Comics"). Je leesstatus, bezit en gelezen issues blijven altijd van jou; ontkoppelen kan per reeks.
 - **Bladwijzer per serie**: "Verder lezen" op Home, laatst gelezen bovenaan, met één tik op *Uit!* naar het volgende deel.
-- **Nieuwe delen automatisch**: elke ochtend om ±07:00 controleert de server je gekoppelde series. Nieuwe delen verschijnen op Home onder *Nieuw verschenen*; aangekondigde delen onder *Binnenkort*. Het aantal nieuwe delen staat ook als getal op het app-icoon (waar je telefoon dat ondersteunt).
-- **Sync tussen apparaten**: automatisch bij openen, na elke wijziging en elke 5 minuten. Werkt ook offline; wijzigingen gaan mee zodra je weer internet hebt.
-- Leesstatus en kaststatus, issues afvinken, pauze, tussendoor-delen, verlanglijst, ongedaan maken, back-up.
+- **Leesroute** per serie: hoofdverhaal, zijverhalen en events op verschijningsdatum, met *Alleen hoofdverhaal* en *+ Toch lezen*. Boeken en reeksen voeg je vanuit de route toe; ze komen vanzelf op hun plek.
+- **Nieuwe delen automatisch**: elke ochtend om ±07:00 controleert de server al je gekoppelde reeksen. Nieuwe delen verschijnen op Home onder *Nieuw verschenen*; aangekondigde delen onder *Binnenkort*. Het aantal nieuwe delen staat ook als getal op het app-icoon (waar je telefoon dat ondersteunt).
+- **Sync tussen apparaten**: automatisch bij openen, na elke wijziging en elke 5 minuten. Werkt ook offline. **Alles wissen** leegt de kast op de server én op al je gekoppelde apparaten.
+- Leesstatus en kaststatus, issues afvinken, pauze, verlanglijst, ongedaan maken, back-up.
 
 ## Installeren (eenmalig, ± 10 minuten)
 
@@ -44,7 +45,7 @@ api/                         serverfuncties (Vercel): status, sync, cron, metron
 api/_lib/                    Metron- en Comic Vine-client (limieten + cache), opslag (Upstash REST), controle op nieuwe delen
 vercel.json                  dagelijkse taak en instellingen
 tools/dev-server.js          lokaal draaien, met nep-Metron en nep-opslag
-tests/                       node --test
+tests/                       node --test (tests/fixtures: testdata)
 ```
 
 **Samenvoegen bij sync**: per serie en per volume wint de laatst gewijzigde versie. Verwijderen wordt onthouden, zodat een ander apparaat het niet terugzet. Metron is leidend voor titels, covers, datums en de issue-lijst; leesstatus, bezit, notities en vinkjes zijn altijd van jou.
@@ -61,6 +62,6 @@ REAL=1 METRON_TOKEN=… APP_SECRET=… KV_REST_API_URL=… KV_REST_API_TOKEN=…
 
 ## Volgende stappen
 
-- Leesroutes ("Alleen hoofdverhaal", "+ Toch lezen") en aanraders.
+- Aanraders.
 - Pushmeldingen bij nieuwe delen.
 - Statistieken en eigen foto's als cover.
