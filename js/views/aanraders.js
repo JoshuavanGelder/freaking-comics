@@ -93,6 +93,12 @@ function visible(items) {
   return items.filter((i) => !(i.cv && cv.has(Number(i.cv.id))) && !titles.has(`${i.series} ${i.title}`.toLowerCase().trim()));
 }
 
+function becauseName(v) {
+  const s = M.getSeries(getState(), v.seriesId);
+  const name = M.volumeName(v);
+  return s && v.number && !name.toLowerCase().includes(s.title.toLowerCase()) ? `${s.title} ${name}` : name;
+}
+
 function colorFor(publisher) {
   return (COLOR_BY_PUBLISHER.find(([re]) => re.test(publisher || '')) || [null, 'red'])[1];
 }
@@ -118,7 +124,7 @@ function recCard(item, ctx) {
       ),
     ),
     bubble(item.reason),
-    item.because ? h('div', { class: 'rec__because' }, because ? h('a', { href: `#/volume/${because.id}` }, `Omdat je ${item.because} las`) : `Omdat je ${item.because} las`) : null,
+    item.because ? h('div', { class: 'rec__because' }, because ? h('a', { href: `#/volume/${because.id}` }, `Omdat je ${becauseName(because)} las`) : `Omdat je ${item.because} las`) : null,
     h(
       'div',
       { class: 'rec__actions' },

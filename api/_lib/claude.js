@@ -49,7 +49,7 @@ Rules:
 - Write "reason" in informal Dutch (je-vorm), max 2 short sentences, concrete and enthusiastic but not over the top, without spoilers.`;
 
 /** Vraagt Claude om aanraders. Geeft een lijst ruwe items terug (nog zonder Comic Vine-gegevens). */
-export async function askRecommendations({ profile, dismissed = [], previous = [], count = 8 }) {
+export async function askRecommendations({ profile, dismissed = [], previous = [], count = 6 }) {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) throw new HttpError(503, 'Aanraders zijn nog niet ingesteld: zet ANTHROPIC_API_KEY in Vercel.');
   const user = [
@@ -60,7 +60,7 @@ export async function askRecommendations({ profile, dismissed = [], previous = [
   ].filter(Boolean).join('\n\n');
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 50_000);
+  const timer = setTimeout(() => controller.abort(), 55_000);
   let res;
   try {
     res = await fetch(`${BASE}/v1/messages`, {
@@ -69,7 +69,7 @@ export async function askRecommendations({ profile, dismissed = [], previous = [
       headers: { 'x-api-key': key.trim(), 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
       body: JSON.stringify({
         model: MODEL(),
-        max_tokens: 8000,
+        max_tokens: 6000,
         system: `${SYSTEM}\n\nAlways answer by calling the "${TOOL.name}" tool exactly once; do not answer in plain text.`,
         tools: [TOOL],
         tool_choice: { type: 'auto' },
