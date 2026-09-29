@@ -391,3 +391,44 @@ test('fillRoute: leeslijst met tie-ins als zijverhaal', () => {
     'Cataclysm: The Ultimates\' Last Stand #2 [event]',
   ]);
 });
+
+test('automatische routedelen: per leeslijst weghalen, aangeraakte delen blijven', () => {
+  let s = M.emptyState();
+  const r0 = M.addSeries(s, { title: 'Ultimate Comics' });
+  s = r0.state;
+  const id = r0.id;
+  s = M.fillRoute(s, id, [{ series: 'Ultimate Comics X-Men', issues: [1, 2, 3].map((n) => ({ number: String(n), date: '2012-01-01' })) }], { now: T3 }).state;
+  const batman = [719, 720].map((n) => ({ series: 'Detective Comics', number: String(n), date: '1998-04-01', kind: 'event' }));
+  s = M.fillRoute(s, id, [{ series: '', issues: batman }], { ordered: true, auto: 'list:metron:27', now: T3 }).state;
+  assert.deepEqual(M.autoSources(s, id).map((x) => `${x.auto}=${x.count}`).sort(), ['fill=1', 'list:metron:27=1']);
+  assert.deepEqual(M.describeIssueList(batman), { from: 1998, to: 1998, top: ['Detective Comics'], count: 2 });
+  assert.deepEqual(M.routeYears(s, id), { from: 1998, to: 2012 });
+  // Een deel dat je las blijft staan
+  const xm = M.volumesOf(s, id).find((v) => v.title.startsWith('Ultimate Comics X-Men'));
+  s = M.setReadStatus(s, xm.id, 'read', T3);
+  const r = M.removeAuto(s, id, 'list:metron:27', T3);
+  assert.equal(r.removed, 1);
+  assert.equal(M.removeAuto(r.state, id, null, T3).removed, 0);
+});
+
+test('beforeAfter: wat komt er vóór en na Divided We Fall', () => {
+  let s = M.emptyState();
+  const r0 = M.addSeries(s, { title: 'Ultimate Comics' });
+  s = r0.state;
+  const dwf = M.addVolume(s, { seriesId: r0.id, title: 'Divided We Fall', issues: M.parseIssues('Ultimate Comics X-Men #13–18\nUltimate Comics Ultimates #13–18', '').issues }, T3);
+  s = dwf.state;
+  const vol1 = M.addVolume(s, { seriesId: r0.id, title: 'X-Men Vol. 1', readStatus: 'read', issues: M.parseIssues('Ultimate Comics X-Men #1–6', '').issues }, T3);
+  s = vol1.state;
+  const lists = {
+    'Ultimate Comics X-Men': [...Array.from({ length: 33 }, (_, k) => ({ number: String(k + 1), date: `201${k < 12 ? 1 : 3}-01-01` })), { number: '18.1', date: '2013-01-01' }],
+    'Ultimate Comics Ultimates': Array.from({ length: 30 }, (_, k) => ({ number: String(k + 1), date: '2012-01-01' })),
+  };
+  const r = M.beforeAfter(s, M.getVolume(s, dwf.id), lists);
+  const xm = r.find((x) => x.series === 'Ultimate Comics X-Men');
+  assert.deepEqual([xm.before.from, xm.before.to, xm.before.count], [1, 12, 12]);
+  assert.deepEqual([xm.after.from, xm.after.to], [19, 33]);
+  assert.deepEqual(xm.before.inKast.map((b) => b.title), ['X-Men Vol. 1']);
+  assert.deepEqual(xm.before.years, [2011, 2011]);
+  const ul = r.find((x) => x.series === 'Ultimate Comics Ultimates');
+  assert.deepEqual([ul.after.from, ul.after.to], [19, 30]);
+});

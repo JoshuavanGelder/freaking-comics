@@ -7,7 +7,8 @@ Houd bij welke comics je gelezen hebt. Per serie een bladwijzer, altijd zichtbaa
 - **Alles via de API's**: de app start leeg en bevat geen voorbeelddata. Je zoekt in één keer op Metron én Comic Vine, bekijkt eerst wat er in een reeks zit, en kiest bij het toevoegen tot welk deel je gelezen hebt. Metron is sterk in losse nummers en nieuwe uitgaven; Comic Vine heeft ook oudere trades (zoals The Flash New 52).
 - **Bestaande series en losse boeken koppelen**, ook meerdere reeksen per serie (bijv. Ultimates, X-Men en Spider-Man in "Ultimate Comics"). Je leesstatus, bezit en gelezen issues blijven altijd van jou; ontkoppelen kan per reeks.
 - **Bladwijzer per serie**: "Verder lezen" op Home, laatst gelezen bovenaan, met één tik op *Uit!* naar het volgende deel.
-- **Leesroute** per serie: hoofdverhaal, zijverhalen en events op verschijningsdatum, met *Alleen hoofdverhaal* en *+ Toch lezen*. Boeken en reeksen voeg je vanuit de route toe; ze komen vanzelf op hun plek.
+- **Het verhaal gaat verder**: bij elk boek zie je wat er vóór en na komt, per serie die erin zit (bijv. bij Divided We Fall: Ultimates en X-Men #1–12 eerder, vanaf #19 daarna), live van Metron. Staat het al in je kast, dan zie je dat; anders zoek je met één tik de trade.
+- **Volgorde en zijverhalen** per serie: hoofdverhaal, zijverhalen en events op verschijningsdatum, met *Alleen hoofdverhaal* en *+ Toch lezen*.
 - **Nieuwe delen automatisch**: elke ochtend om ±07:00 controleert de server al je gekoppelde reeksen. Nieuwe delen verschijnen op Home onder *Nieuw verschenen*; aangekondigde delen onder *Binnenkort*. Het aantal nieuwe delen staat ook als getal op het app-icoon (waar je telefoon dat ondersteunt).
 - **Sync tussen apparaten**: automatisch bij openen, na elke wijziging en elke 5 minuten. Werkt ook offline. **Alles wissen** leegt de kast op de server én op al je gekoppelde apparaten.
 - Leesstatus en kaststatus, issues afvinken, pauze, verlanglijst, ongedaan maken, back-up.

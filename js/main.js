@@ -25,7 +25,7 @@ const routes = [
   [/^\/serie\/([\w-]+)$/, (m, ctx) => serieView({ id: m[1] }, ctx)],
   [/^\/volume\/nieuw$/, (_m, ctx, q) => volumeFormView({}, ctx, q)],
   [/^\/volume\/([\w-]+)\/bewerken$/, (m, ctx, q) => volumeFormView({ id: m[1] }, ctx, q)],
-  [/^\/volume\/([\w-]+)$/, (m) => volumeView({ id: m[1] })],
+  [/^\/volume\/([\w-]+)$/, (m, ctx) => volumeView({ id: m[1] }, ctx)],
 ];
 
 const app = document.getElementById('app');

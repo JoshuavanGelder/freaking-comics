@@ -351,9 +351,9 @@ export function metronView(_params, ctx, query) {
   const addSeries = addTo ? M.getSeries(state, addTo) : null;
   const refresh = query.get('bijwerken') === '1' && localSeries?.metron;
   const extra = query.get('extra') === '1' && !!localSeries;
-  const key = `${seriesId || ''}|${volumeId || ''}|${addTo || ''}|${refresh ? 'r' : ''}|${extra ? 'x' : ''}`;
+  const key = `${seriesId || ''}|${volumeId || ''}|${addTo || ''}|${refresh ? 'r' : ''}|${extra ? 'x' : ''}|${query.get('q') || ''}`;
   if (ui.key !== key) {
-    const guess = localVolume ? localVolume.title : localSeries && !extra ? localSeries.title : '';
+    const guess = query.get('q') || (localVolume ? localVolume.title : localSeries && !extra ? localSeries.title : '');
     reset(key, guess);
     if (refresh && isConnected()) queueMicrotask(() => refreshAll(localSeries, ctx));
     else if (guess && isConnected()) queueMicrotask(() => runSearch(ctx, { seriesId: extra ? null : seriesId }));

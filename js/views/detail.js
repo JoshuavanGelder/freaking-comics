@@ -3,7 +3,7 @@ import * as M from '../model.js';
 import { getState, dispatch, undo } from '../store.js';
 import { h, icon, cover, section, bubble, backButton, topbar, progress, formatDate, toast } from '../ui.js';
 import * as A from '../actions.js';
-import { isConnected } from '../api.js';
+import { api, isConnected } from '../api.js';
 
 const FILTERS = [
   ['all', 'Alles', () => true],
@@ -138,7 +138,8 @@ export function serieView({ id }, ctx) {
             ? h('button', { class: 'btn', type: 'button', 'data-key': 'pause', style: { flex: '1' }, onClick: () => A.setPaused(id, false) }, icon('play', { size: 16 }), 'Hervatten')
             : h('button', { class: 'btn', type: 'button', 'data-key': 'pause', style: { flex: '1' }, onClick: () => A.setPaused(id, true) }, icon('pause', { size: 18 }), 'Pauze'),
         ),
-        h('a', { class: 'btn btn--ink btn--block', href: `#/serie/${id}/route` }, icon('route', { size: 18, width: 2.4, color: 'var(--yellow)' }), 'Leesroute'),
+        autoCleanup(state, id),
+        h('a', { class: 'btn btn--ghost btn--block', href: `#/serie/${id}/route` }, icon('route', { size: 18, width: 2.4 }), 'Volgorde en zijverhalen'),
         metronBox(series),
         vols.length
           ? section(
@@ -174,6 +175,26 @@ export function serieView({ id }, ctx) {
   };
 }
 
+function autoCleanup(state, id) {
+  const sources = M.autoSources(state, id);
+  const total = sources.reduce((n, x) => n + x.count, 0);
+  if (!total) return null;
+  return h(
+    'button',
+    {
+      class: 'btn btn--block',
+      type: 'button',
+      'data-key': 'auto-cleanup',
+      onClick: () => {
+        if (!confirm(`${total} automatisch toegevoegde ${total === 1 ? 'deel' : 'delen'} weghalen? Delen die je gelezen, gekocht of genoteerd hebt blijven staan.`)) return;
+        const r = dispatch((s) => M.removeAuto(s, id), { undoable: true });
+        toast(`${r.removed} ${r.removed === 1 ? 'deel' : 'delen'} weggehaald.`, { label: 'Ongedaan', run: () => { undo(); toast('Teruggezet.'); } });
+      },
+    },
+    `Automatisch toegevoegde delen weghalen (${total})`,
+  );
+}
+
 function statBox(num, label) {
   return h('div', { class: 'stat' }, h('div', { class: 'stat__num' }, String(num)), h('div', { class: 'stat__label' }, label));
 }
@@ -202,7 +223,7 @@ function segmented(label, options, current, onPick, keyPrefix) {
   );
 }
 
-export function volumeView({ id }) {
+export function volumeView({ id }, ctx) {
   const state = getState();
   const v = M.getVolume(state, id);
   if (!v) return notFound('Volume');
@@ -296,20 +317,97 @@ export function volumeView({ id }) {
         section(
           'Het verhaal gaat verder',
           null,
+          storySection(state, v, series, ctx),
           following
             ? h(
                 'a',
                 { class: 'vol-row', href: `#/volume/${following.id}` },
-                h('div', { class: 'kicker', style: { width: '60px', flexShrink: '0' } }, 'DAARNA'),
-                h('div', { class: 'vol-row__body' }, h('div', { class: 'vol-row__title' }, M.volumeName(following)), h('div', { class: 'sub' }, M.READ_LABELS[following.readStatus])),
+                h('div', { class: 'kicker', style: { width: '60px', flexShrink: '0' } }, 'IN JE KAST'),
+                h('div', { class: 'vol-row__body' }, h('div', { class: 'vol-row__title' }, M.volumeName(following)), h('div', { class: 'sub' }, `Volgende deel · ${M.READ_LABELS[following.readStatus]}`)),
                 icon('chevron', { width: 3 }),
               )
-            : h('p', { class: 'hint' }, `Dit is het laatste deel dat in je kast staat voor ${series.title}.`),
+            : null,
           h('a', { class: 'btn btn--ink btn--big btn--block', href: `#/serie/${series.id}` }, `Hele serie bekijken`, icon('arrow', { size: 18, width: 3, color: 'var(--yellow)' })),
         ),
       ),
     ],
   };
+}
+
+// "Ervoor en erna" per boek: nummers van dezelfde series op Metron, zolang de app open is.
+const story = new Map(); // volumeId → { key, status: 'loading'|'ok'|'error', data, error }
+
+function storyKey(v) {
+  return v.issues.map((i) => `${i.series}#${i.number}`).join('|');
+}
+
+function loadStory(v, ctx) {
+  const key = storyKey(v);
+  const cur = story.get(v.id);
+  if (cur && cur.key === key) return cur;
+  const entry = { key, status: 'loading', data: null, error: null };
+  story.set(v.id, entry);
+  const names = M.bookRanges(v).map((r) => r.series).slice(0, 8);
+  const year = Number(String(v.storeDate || '').slice(0, 4)) || '';
+  api(`/api/route/series?names=${encodeURIComponent(names.join('|'))}&year=${year}`, { timeout: 90_000 })
+    .then(({ results }) => {
+      const lists = {};
+      for (const r of results) if (r.found) lists[r.name] = r.issues;
+      entry.status = 'ok';
+      entry.data = lists;
+    })
+    .catch((err) => {
+      entry.status = 'error';
+      entry.error = err.message;
+    })
+    .finally(() => ctx?.rerender());
+  return entry;
+}
+
+function rangeText(part) {
+  return part.from === part.to ? `#${part.from}` : `#${part.from}–${part.to}`;
+}
+
+function storyRow(label, part, series, v) {
+  const years = part.years ? (part.years[0] === part.years[1] ? `${part.years[0]}` : `${part.years[0]}–${part.years[1]}`) : '';
+  const q = `${part.series}`;
+  const inKast = part.inKast.length
+    ? h('div', { class: 'sub' }, 'In je kast: ', part.inKast.map((b, i) => [i ? ', ' : '', h('a', { href: `#/volume/${b.id}` }, b.title), b.read === 'read' ? ' (gelezen)' : ''])) 
+    : null;
+  return h(
+    'div',
+    { class: 'story-row' },
+    h('div', { class: 'kicker', style: { width: '60px', flexShrink: '0' } }, label),
+    h(
+      'div',
+      { class: 'vol-row__body' },
+      h('div', { class: 'vol-row__title' }, `${part.series} ${rangeText(part)}`),
+      h('div', { class: 'sub' }, [years, `${part.count} ${part.count === 1 ? 'nummer' : 'nummers'}`].filter(Boolean).join(' · ')),
+      inKast,
+      part.missing
+        ? h('a', { class: 'btn', style: { alignSelf: 'flex-start', marginTop: '6px' }, href: `#/zoeken?toevoegen=${series.id}&q=${encodeURIComponent(q)}` }, part.inKast.length ? 'Zoek de rest' : 'Zoek de trade')
+        : null,
+    ),
+  );
+  void v;
+}
+
+function storySection(state, v, series, ctx) {
+  if (!v.issues.length) return null;
+  if (!isConnected()) return h('p', { class: 'hint' }, 'Koppel de app aan je server om te zien wat er vóór en na dit boek komt.');
+  const entry = loadStory(v, ctx);
+  if (entry.status === 'loading') return h('p', { class: 'hint', role: 'status' }, 'Opzoeken wat er vóór en na dit boek komt…');
+  if (entry.status === 'error') return h('p', { class: 'hint' }, `Kon niet ophalen wat er vóór en na komt: ${entry.error}`);
+  const rows = M.beforeAfter(state, v, entry.data);
+  if (!rows.length) return h('p', { class: 'hint' }, 'Metron kent de series in dit boek niet, dus de app weet niet wat ervoor en erna komt.');
+  const before = rows.filter((r) => r.before).map((r) => storyRow('EERDER', r.before, series, v));
+  const after = rows.filter((r) => r.after).map((r) => storyRow('DAARNA', r.after, series, v));
+  return h(
+    'div',
+    { class: 'stack' },
+    before.length ? before : h('p', { class: 'hint' }, 'Dit boek is het begin: er komt niets vóór.'),
+    after.length ? after : h('p', { class: 'hint' }, 'Dit is het einde van deze series.'),
+  );
 }
 
 function shortSeriesName(name, context) {

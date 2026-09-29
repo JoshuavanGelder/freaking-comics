@@ -458,6 +458,8 @@ function cleanVolumeData(data) {
     isSide: data.kind in KINDS ? data.kind === 'side' : !!data.isSide,
     inRoute: !!data.inRoute,
     linkKey: typeof data.linkKey === 'string' ? data.linkKey : null,
+    // Automatisch aan de route toegevoegd: 'fill' (aanvullen uit series) of 'list:<bron>:<id>' (leeslijst)
+    auto: typeof data.auto === 'string' ? data.auto : null,
     ownership: OWNERSHIP.includes(data.ownership) ? data.ownership : 'none',
     note: String(data.note || '').trim(),
     cover: cleanUrl(data.cover),
@@ -1164,7 +1166,7 @@ function runTitle(run) {
  * wordt gegroepeerd in blokken van `chunk` en alles komt op volgorde van verhaal-datum.
  * @returns {{ state, added: number }}
  */
-export function fillRoute(state, seriesId, sources, { chunk = 6, ordered = false, defaultKind = 'main', now = nowIso() } = {}) {
+export function fillRoute(state, seriesId, sources, { chunk = 6, ordered = false, defaultKind = 'main', auto = 'fill', now = nowIso() } = {}) {
   const covered = new Set();
   for (const v of volumesOf(state, seriesId)) for (const i of v.issues) covered.add(issueKey(i));
   const dateOf = new Map();
@@ -1210,6 +1212,7 @@ export function fillRoute(state, seriesId, sources, { chunk = 6, ordered = false
       kind,
       issues: e.run.map((i) => ({ id: makeId('i'), series: i.series, number: i.number, read: false })),
       storeDate: e.date,
+      auto,
     }, now);
     next = r.state;
     added += 1;
@@ -1237,4 +1240,108 @@ export function fillRoute(state, seriesId, sources, { chunk = 6, ordered = false
 export function kindFromListType(listType, issueType) {
   if (issueType === 'TIE_IN' || issueType === 'Tie-In') return 'side';
   return /event/i.test(listType || '') ? 'event' : 'main';
+}
+
+/** Is dit een automatisch toegevoegd routedeel waar je nog niets mee deed? */
+export function isUntouchedAuto(v) {
+  const auto = v.auto || (v.format === 'issue' && v.metronId == null && !v.number ? 'fill' : null);
+  return !!auto && v.readStatus === 'unread' && v.ownership === 'none' && !v.note && !v.issues.some((i) => i.read);
+}
+
+/** Welke automatische bronnen staan in de route (voor "weghalen"): [{ auto, count }] */
+export function autoSources(state, seriesId) {
+  const counts = new Map();
+  for (const v of volumesOf(state, seriesId)) {
+    const a = v.auto || (isUntouchedAuto(v) ? 'fill' : null);
+    if (a) counts.set(a, (counts.get(a) || 0) + 1);
+  }
+  return [...counts].map(([auto, count]) => ({ auto, count }));
+}
+
+/**
+ * Haalt automatisch toegevoegde delen weg (alleen die je niet aanraakte).
+ * `auto`: 'fill', 'list:…' of null voor alles. Oude delen zonder markering tellen als 'fill'.
+ */
+export function removeAuto(state, seriesId, auto = null, now = nowIso()) {
+  const gone = volumesOf(state, seriesId)
+    .filter((v) => isUntouchedAuto(v) && (!auto || (v.auto || 'fill') === auto))
+    .map((v) => v.id);
+  const set = new Set(gone);
+  return {
+    state: { ...state, volumes: state.volumes.filter((v) => !set.has(v.id)), deleted: withDeleted(state, gone, now) },
+    removed: gone.length,
+  };
+}
+
+/** Samenvatting van een leeslijst: jaren en meest voorkomende series. */
+export function describeIssueList(items) {
+  const years = items.map((i) => Number(String(i.date || '').slice(0, 4))).filter(Boolean);
+  const counts = new Map();
+  for (const i of items) counts.set(i.series, (counts.get(i.series) || 0) + 1);
+  const top = [...counts].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([s]) => s);
+  return { from: years.length ? Math.min(...years) : null, to: years.length ? Math.max(...years) : null, top, count: items.length };
+}
+
+/** Jaren waarin een route speelt (op basis van datums van de delen). */
+export function routeYears(state, seriesId) {
+  const years = volumesOf(state, seriesId).map((v) => Number(String(v.storeDate || '').slice(0, 4))).filter(Boolean);
+  return years.length ? { from: Math.min(...years), to: Math.max(...years) } : null;
+}
+
+// ---------------------------------------------------------------- ervoor en erna
+
+/**
+ * Per serie in een boek: welk stuk zit erin (bijv. X-Men #13–18).
+ * @returns [{ series, from, to, numbers: string[] }]
+ */
+export function bookRanges(v) {
+  const out = [];
+  for (const g of groupIssues(v.issues)) {
+    const nums = g.issues.map((i) => Number(i.number)).filter((n) => Number.isFinite(n));
+    if (!nums.length) continue;
+    out.push({ series: g.series, from: Math.min(...nums), to: Math.max(...nums), numbers: g.issues.map((i) => String(i.number)) });
+  }
+  return out;
+}
+
+/**
+ * Wat komt er vóór en na een boek, per serie, op basis van alle nummers van die serie.
+ * `lists`: { [serienaam]: [{ number, date }] } (van Metron).
+ * Nummers die al in een ander boek in je kast zitten worden gemarkeerd.
+ */
+export function beforeAfter(state, volume, lists) {
+  const inKast = new Map();
+  for (const v of state.volumes) {
+    if (v.id === volume.id) continue;
+    for (const i of v.issues) inKast.set(issueKey(i), v);
+  }
+  const res = [];
+  for (const r of bookRanges(volume)) {
+    const list = (lists[r.series] || [])
+      .map((i) => ({ number: String(i.number), n: Number(i.number), date: i.date || null }))
+      .filter((i) => Number.isFinite(i.n) && i.n >= 1 && i.n < 100 && Number.isInteger(i.n));
+    if (!list.length) continue;
+    const describe = (part) => {
+      if (!part.length) return null;
+      part.sort((a, b) => a.n - b.n);
+      const years = part.map((i) => Number(String(i.date || '').slice(0, 4))).filter(Boolean);
+      const books = [...new Set(part.map((i) => inKast.get(issueKey({ series: r.series, number: i.number }))).filter(Boolean))];
+      return {
+        series: r.series,
+        from: part[0].n,
+        to: part[part.length - 1].n,
+        count: part.length,
+        years: years.length ? [Math.min(...years), Math.max(...years)] : null,
+        inKast: books.map((b) => ({ id: b.id, title: volumeName(b), read: b.readStatus })),
+        missing: part.filter((i) => !inKast.has(issueKey({ series: r.series, number: i.number }))).length,
+      };
+    };
+    res.push({
+      series: r.series,
+      mine: [r.from, r.to],
+      before: describe(list.filter((i) => i.n < r.from)),
+      after: describe(list.filter((i) => i.n > r.to)),
+    });
+  }
+  return res;
 }

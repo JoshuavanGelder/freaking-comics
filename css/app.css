@@ -750,3 +750,8 @@ button { cursor: pointer; }
 
 .link-row { display: flex; align-items: center; gap: 10px; justify-content: space-between; }
 .link-row .sub { flex: 1; min-width: 0; }
+
+.story-row {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 10px 12px; border-radius: 14px; border: var(--border); background: var(--white);
+}

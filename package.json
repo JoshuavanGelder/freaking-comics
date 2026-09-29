@@ -1,6 +1,6 @@
 {
   "name": "freaking-comics",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "private": true,
   "description": "Houd bij welke comics je gelezen hebt, per serie met bladwijzer en volgende deel.",
   "type": "module",
