@@ -97,7 +97,7 @@ export const GET = handle(async (request) => {
     const recs = (await getJson(KEYS.recs)) || {};
     return json({
       generatedAt: recs.generatedAt || null,
-      items: (recs.items || []).map((i) => ({ key: i.key, kind: i.kind, series: i.series, title: i.title, year: i.year, creators: i.creators, because: i.because, reason: i.reason, cv: i.cv ? i.cv.id : null })),
+      items: (recs.items || []).map((i) => ({ key: i.key, kind: i.kind, series: i.series, title: i.title, year: i.year, creators: i.creators, because: i.because, reason: i.reason, bron: i.match ? `${i.match.source}:${i.match.id}` : i.cv ? `comicvine:${i.cv.id}` : null })),
       dismissed: recs.dismissed || [],
     });
   }
@@ -105,7 +105,7 @@ export const GET = handle(async (request) => {
   if (what === 'aanraders') {
     const started = Date.now();
     const r = await refreshRecs();
-    return json({ ms: Date.now() - started, items: r.items.map((i) => ({ kind: i.kind, book: `${i.series} ${i.title}`, year: i.year, cv: i.cv ? `${i.cv.id} ${i.cv.name} (${i.cv.year}, ${i.cv.issueCount})` : null, because: i.because, reason: i.reason })) });
+    return json({ ms: Date.now() - started, items: r.items.map((i) => ({ kind: i.kind, book: `${i.series} ${i.title}`, year: i.year, bron: i.match ? `${i.match.source}:${i.match.id} ${i.match.name} (${i.match.year}, ${i.match.issueCount})` : null, because: i.because, reason: i.reason })) });
   }
 
   throw new HttpError(400, 'Onbekende vraag.');

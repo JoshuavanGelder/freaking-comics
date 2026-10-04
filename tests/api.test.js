@@ -252,6 +252,14 @@ test('aanraders: Claude leest de kast, Comic Vine levert cover, wegklikken wordt
   assert.match(hunger.cv.image, /hunger\.jpg/);
   assert.equal(r.items.find((i) => i.series === 'Saga').cv.id, 6666);
   assert.equal(r.items.at(-1).cv, null);
+  assert.equal(r.items.at(-1).match, null);
+  // Bij Hunger en Saga wint Comic Vine (de bronnen staan gelijk, dan Comic Vine); Paper Girls staat alleen op Metron
+  assert.equal(hunger.match.source, 'comicvine');
+  const paper = r.items.find((i) => i.series === 'Paper Girls');
+  assert.equal(paper.match.source, 'metron');
+  assert.equal(paper.match.id, 5001);
+  assert.match(paper.match.image, /50001\.jpg/);
+  assert.equal(paper.cv, null);
   // Wat al in de kast staat valt weg (Ultimate Comics X-Men Vol. 1: Blood zit in de testkast)
   const inKast = M.shelfTitles(state).has('ultimate comics x-men vol. 1: blood');
   if (inKast) assert.ok(!r.items.some((i) => i.series === 'Ultimate Comics X-Men'));

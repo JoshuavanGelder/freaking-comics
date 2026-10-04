@@ -128,6 +128,36 @@ export async function searchSeries(q, { collected = false } = {}) {
   return [...seen.values()];
 }
 
+/**
+ * Kandidaten voor een aanrader: verzamelde edities (Trade Paperback, Hardcover; en alleen als die
+ * niets opleveren ook Omnibus en Graphic Novel) met de naam van de serie. Weinig verzoeken, want
+ * Metron staat maar 20 verzoeken per minuut toe. Het resultaat wordt een week bewaard.
+ */
+export async function recommendationCandidates(name, { deadline } = {}) {
+  const bare = String(name || '').replace(/^(the|a|an)\s+/i, '').trim();
+  if (!bare) return [];
+  return cached(`fc:metron:rec:${bare.toLowerCase()}`, 7 * 86400, async () => {
+    const seen = new Map();
+    for (const typeIds of [[10, 8], [15, 9]]) {
+      for (const typeId of typeIds) {
+        const data = await metronGet('series/', { name: bare, series_type_id: typeId }, { deadline });
+        for (const s of data.results || []) seen.set(s.id, simplifySeries(s));
+      }
+      if (seen.size) break;
+    }
+    return [...seen.values()];
+  });
+}
+
+/** Cover van een Metron-reeks: het eerste nummer of deel met een afbeelding. */
+export async function seriesCover(id, { deadline } = {}) {
+  return cached(`fc:metron:cover:${Number(id)}`, 7 * 86400, async () => {
+    const data = await metronGet('issue/', { series_id: Number(id) }, { deadline });
+    const hit = (data.results || []).find((i) => i.image);
+    return hit?.image || '';
+  });
+}
+
 export async function getSeries(id) {
   const s = await metronGet(`series/${Number(id)}/`);
   return {

@@ -10,6 +10,7 @@ const SERIES = [
   { id: 1001, series: 'The Flash TPB (2012)', name: 'The Flash', year_began: 2012, year_end: 2016, volume: 1, issue_count: 9, publisher: { id: 2, name: 'DC Comics' }, series_type: { id: 10, name: 'Trade Paperback' } },
   { id: 2001, series: 'Ultimate Comics: Divided We Fall, United We Stand HC (2013)', name: 'Ultimate Comics: Divided We Fall, United We Stand', year_began: 2013, year_end: 2013, volume: 1, issue_count: 1, publisher: { id: 1, name: 'Marvel' }, series_type: { id: 8, name: 'Hardcover' } },
   { id: 1002, series: 'Flash TPB (2013)', name: 'Flash', year_began: 2013, year_end: 2017, volume: 1, issue_count: 9, publisher: { id: 2, name: 'DC Comics' }, series_type: { id: 10, name: 'Trade Paperback' } },
+  { id: 5001, series: 'Paper Girls TPB (2015)', name: 'Paper Girls', year_began: 2015, year_end: 2019, volume: 1, issue_count: 6, publisher: { id: 3, name: 'Image' }, series_type: { id: 10, name: 'Trade Paperback' } },
   { id: 3001, series: 'Saga TPB (2012)', name: 'Saga', year_began: 2012, year_end: null, volume: 1, issue_count: 3, publisher: { id: 3, name: 'Image' }, series_type: { id: 10, name: 'Trade Paperback' } },
 ];
 
@@ -34,6 +35,7 @@ ISSUES.push({
     { id: 62000 + k, issue: `Ultimate Comics Spider-Man (2011) #${k}` },
   ]),
 });
+ISSUES.push({ id: 50001, seriesId: 5001, number: '1', title: 'Vol. 1', store_date: '2016-04-06', reprints: [] });
 for (let k = 1; k <= 52; k += 1) ISSUES.push({ id: 40000 + k, seriesId: 1000, number: String(k), title: '', store_date: '2012-01-01', reprints: [] });
 ['Volume One', 'Volume Two', 'Volume Three'].forEach((title, i) => {
   ISSUES.push({ id: 30001 + i, seriesId: 3001, number: String(i + 1), title, store_date: `201${3 + i}-10-23`, reprints: [] });
@@ -110,6 +112,7 @@ const RECS = [
   { series: 'Hunger', title: 'Hunger', publisher: 'Marvel', year: 2013, creators: 'Joshua Hale Fialkov / Leonard Kirk', kind: 'vervolg', because: 'Ultimate Comics: Divided We Fall, United We Stand', reason: 'Hier begint het einde van het Ultimate-universum. Na Divided We Fall wil je weten hoe het afloopt.' },
   { series: 'Saga', title: 'Vol. 1', publisher: 'Image', year: 2012, creators: 'Brian K. Vaughan / Fiona Staples', kind: 'klassieker', because: '', reason: 'Snel, grappig en groots. Als je van vaart houdt zoals in The Flash, zit je hier goed.' },
   { series: 'Ultimate Comics X-Men', title: 'Vol. 1: Blood', publisher: 'Marvel', year: 2011, creators: 'Nick Spencer', kind: 'vervolg', because: '', reason: 'Staat al in je kast als het goed is.' },
+  { series: 'Paper Girls', title: 'Vol. 1', publisher: 'Image', year: 2015, creators: 'Brian K. Vaughan / Cliff Chiang', kind: 'zelfde-maker', because: '', reason: 'Zelfde schrijver als Saga, met een heel andere sfeer.' },
   { series: 'Verzonnen Strip Die Niet Bestaat', title: 'Vol. 1', publisher: 'DC', year: 2015, creators: '', kind: 'vergelijkbaar', because: '', reason: 'Test zonder Comic Vine-treffer.' },
 ];
 

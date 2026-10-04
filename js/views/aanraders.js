@@ -1,5 +1,5 @@
 // Aanraders: boeken die Claude je aanraadt op basis van je kast en wat je Top/Niks vond.
-// Covers en de reeks om toe te voegen komen van Comic Vine.
+// Covers en de reeks om toe te voegen komen van Comic Vine of Metron, wat het best past.
 import * as M from '../model.js';
 import { getState, subscribe } from '../store.js';
 import { h, icon, cover, section, bubble, topbar, toast, formatDate } from '../ui.js';
@@ -100,10 +100,9 @@ function dismiss(item, ctx) {
 /** Wat je intussen al hebt toegevoegd, meteen weglaten (de server doet dat pas na de volgende sync). */
 function visible(items) {
   const state = getState();
-  const cv = new Set();
-  for (const s of state.series) for (const l of M.seriesLinks(s)) if (l.source === 'comicvine') cv.add(Number(l.id));
+  const keys = M.shelfLinkKeys(state);
   const titles = M.shelfTitles(state);
-  return items.filter((i) => !(i.cv && cv.has(Number(i.cv.id))) && !titles.has(`${i.series} ${i.title}`.toLowerCase().trim()));
+  return items.filter((i) => !M.recInShelf(i, keys) && !titles.has(`${i.series} ${i.title}`.toLowerCase().trim()));
 }
 
 function becauseName(v) {
@@ -117,7 +116,8 @@ function colorFor(publisher) {
 }
 
 function recCard(item, ctx) {
-  const target = item.cv ? `#/reeks/comicvine/${item.cv.id}?van=aanraders` : `#/zoeken?q=${encodeURIComponent(item.series)}`;
+  const found = M.recMatch(item);
+  const target = found ? `#/reeks/${found.source}/${found.id}?van=aanraders` : `#/zoeken?q=${encodeURIComponent(item.series)}`;
   const heading = [item.series, item.title && !item.title.toLowerCase().startsWith(item.series.toLowerCase()) ? item.title : ''].filter(Boolean).join(' · ') || item.title;
   const meta = [item.publisher, item.year, item.creators].filter(Boolean).join(' · ');
   const because = item.because ? M.findVolumeByTitle(getState(), item.because) : null;
@@ -127,7 +127,7 @@ function recCard(item, ctx) {
     h(
       'a',
       { class: 'rec__head', href: target },
-      cover({ cover: item.cv?.image || null, number: '', title: item.series }, { color: colorFor(item.publisher) }, 'md'),
+      cover({ cover: found?.image || null, number: '', title: item.series }, { color: colorFor(item.publisher) }, 'md'),
       h(
         'div',
         { class: 'rec__body' },
@@ -141,7 +141,7 @@ function recCard(item, ctx) {
     h(
       'div',
       { class: 'rec__actions' },
-      h('a', { class: 'btn btn--ink', href: target }, item.cv ? 'Bekijken en toevoegen' : 'Zoeken'),
+      h('a', { class: 'btn btn--ink', href: target }, found ? 'Bekijken en toevoegen' : 'Zoeken'),
       h('button', { class: 'btn btn--ghost', type: 'button', 'data-key': `dismiss-${item.key}`, onClick: () => dismiss(item, ctx) }, 'Niks voor mij'),
     ),
   );

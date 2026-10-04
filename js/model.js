@@ -1070,6 +1070,26 @@ export function linkKeyOf(link) {
   return link ? `${link.source || 'metron'}:${link.id}` : null;
 }
 
+/** De gevonden reeks bij een aanrader (Comic Vine of Metron). Oude aanraders hebben alleen `cv`. */
+export function recMatch(item) {
+  if (item?.match?.id) return { ...item.match, source: item.match.source === 'metron' ? 'metron' : 'comicvine' };
+  if (item?.cv?.id) return { ...item.cv, source: 'comicvine' };
+  return null;
+}
+
+/** Sleutels ("comicvine:123", "metron:45") van alle online reeksen in de kast. */
+export function shelfLinkKeys(state) {
+  const keys = new Set();
+  for (const s of state.series) for (const l of seriesLinks(s)) keys.add(linkKeyOf(l));
+  return keys;
+}
+
+/** Staat de gevonden reeks van deze aanrader al in de kast? */
+export function recInShelf(item, linkKeys) {
+  const m = recMatch(item);
+  return !!m && linkKeys.has(`${m.source}:${m.id}`);
+}
+
 /** Alle online reeksen van een serie (de eerste koppeling plus extra reeksen). */
 export function seriesLinks(series) {
   const out = [];

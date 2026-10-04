@@ -6,8 +6,10 @@
 import { json, preflight, handle, requireApp, readJson, HttpError } from './_lib/http.js';
 import { getJson, setJson, KEYS } from './_lib/store.js';
 import { askRecommendations, claudeConfigured } from './_lib/claude.js';
-import { findRecommendation, comicVineConfigured } from './_lib/comicvine.js';
-import { tasteProfile, shelfTitles, seriesLinks, emptyState, profileHash as hash, recsNeedUpdate } from '../js/model.js';
+import { comicVineConfigured } from './_lib/comicvine.js';
+import { metronConfigured } from './_lib/metron.js';
+import { findMatch } from './_lib/recmatch.js';
+import { tasteProfile, shelfTitles, shelfLinkKeys, recInShelf, recMatch, emptyState, profileHash as hash, recsNeedUpdate } from '../js/model.js';
 
 export const OPTIONS = preflight;
 
@@ -26,10 +28,9 @@ async function loadAll() {
 
 /** Wat al in de kast staat, via Comic Vine-koppelingen of op titel. */
 function inShelf(state) {
-  const cv = new Set();
-  for (const s of state.series) for (const l of seriesLinks(s)) if (l.source === 'comicvine') cv.add(Number(l.id));
+  const keys = shelfLinkKeys(state);
   const titles = shelfTitles(state);
-  return (item) => (item.cv && cv.has(Number(item.cv.id))) || titles.has(`${item.series} ${item.title}`.toLowerCase().trim());
+  return (item) => recInShelf(item, keys) || titles.has(`${item.series} ${item.title}`.toLowerCase().trim());
 }
 
 function view(state, recs) {
@@ -38,7 +39,7 @@ function view(state, recs) {
   const items = recs.items.filter((i) => !dismissed.has(i.key) && !has(i));
   const readSomething = state.volumes.some((v) => v.readStatus !== 'unread');
   return {
-    configured: { ai: claudeConfigured(), comicvine: comicVineConfigured() },
+    configured: { ai: claudeConfigured(), comicvine: comicVineConfigured(), metron: metronConfigured() },
     generatedAt: recs.generatedAt || null,
     basedOn: recs.basedOn || null,
     items,
@@ -59,23 +60,24 @@ async function generate(state, recs) {
   const has = inShelf(state);
   const seen = new Set();
   const items = [];
-  const matched = await Promise.all(
-    raw.map((item) => (comicVineConfigured() ? findRecommendation(item).catch(() => null) : Promise.resolve(null))),
-  );
+  // Per aanrader zoeken we op Comic Vine én Metron en nemen de reeks die het best past.
+  const matched = await Promise.all(raw.map((item) => findMatch(item).catch(() => null)));
   raw.forEach((item, k) => {
     const key = keyOf(item);
     if (seen.has(key)) return;
     seen.add(key);
-    const m = matched[k];
+    const match = matched[k];
     const full = {
       key,
       ...item,
-      cv: m ? { id: m.id, name: m.name, year: m.start_year, image: m.image, issueCount: m.count_of_issues } : null,
+      match,
+      // Voor oudere versies van de app, die alleen `cv` kennen.
+      cv: match?.source === 'comicvine' ? { id: match.id, name: match.name, year: match.year, image: match.image, issueCount: match.issueCount } : null,
     };
     if (!has(full)) items.push(full);
   });
-  // Gevonden op Comic Vine eerst: die kun je meteen bekijken en toevoegen.
-  items.sort((a, b) => (b.cv ? 1 : 0) - (a.cv ? 1 : 0));
+  // Gevonden (Comic Vine of Metron) eerst: die kun je meteen bekijken en toevoegen.
+  items.sort((a, b) => (recMatch(b) ? 1 : 0) - (recMatch(a) ? 1 : 0));
   return { ...recs, generatedAt: new Date().toISOString(), basedOn: hash(profile), items };
 }
 
