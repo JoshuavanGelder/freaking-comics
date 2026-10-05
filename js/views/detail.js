@@ -55,7 +55,7 @@ function volumeRow(v, series, isNext = false) {
       v.isSide ? h('span', { class: 'tag' }, 'ZIJVERHAAL') : null,
       v.rating === 'top' ? h('span', { class: 'tag tag--top' }, 'TOP') : null,
       h('div', { class: 'vol-row__title' }, M.volumeName(v)),
-      h('div', { class: 'sub' }, sub),
+      h('div', { class: 'sub sub--clamp' }, sub),
     ),
     volumePill(v, isNext),
   );

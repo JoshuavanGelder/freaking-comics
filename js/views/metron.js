@@ -629,7 +629,7 @@ export function reeksView({ source, id }, ctx, query) {
                   'div',
                   { class: 'vol-row__body' },
                   h('div', { class: 'vol-row__title' }, `#${it.number}${it.title ? ` · ${it.title}` : ''}`),
-                  h('div', { class: 'sub' }, [it.store_date || it.cover_date ? formatDate(it.store_date || it.cover_date) : '', (it.reprints || []).length ? M.formatIssues((it.reprints || []).map((x) => M.parseReprint(x.issue)).filter(Boolean).map((x, k) => ({ id: String(k), ...x, read: false }))) : ''].filter(Boolean).join(' · ')),
+                  h('div', { class: 'sub sub--clamp' }, [it.store_date || it.cover_date ? formatDate(it.store_date || it.cover_date) : '', (it.reprints || []).length ? M.formatIssues((it.reprints || []).map((x) => M.parseReprint(x.issue)).filter(Boolean).map((x, k) => ({ id: String(k), ...x, read: false }))) : ''].filter(Boolean).join(' · ')),
                 ),
                 i < previewUi.readUpTo ? h('span', { class: 'pill pill--read' }, 'Gelezen') : null,
               ),

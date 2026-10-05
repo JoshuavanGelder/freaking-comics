@@ -88,7 +88,7 @@ export function wishlistView() {
                         'a',
                         { href: `#/volume/${v.id}`, class: 'vol-row__body', style: { textDecoration: 'none' } },
                         h('div', { class: 'vol-row__title' }, M.volumeName(v)),
-                        h('div', { class: 'sub' }, M.formatIssues(v.issues, g.series.title) || M.FORMATS[v.format]),
+                        h('div', { class: 'sub sub--clamp' }, M.formatIssues(v.issues, g.series.title) || M.FORMATS[v.format]),
                       ),
                       h(
                         'button',
