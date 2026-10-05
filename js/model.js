@@ -763,6 +763,13 @@ function sameNumber(a, b) {
   return String(a).toLowerCase() === String(b).toLowerCase();
 }
 
+const FORMAT_WORDS = /\b(hc|tpb|sc|gn|ogn|hardcover|softcover|trade paperback|paperback|graphic novel|omnibus|vol(?:ume)?\.?\s*\d+(?:\.\d+)?)\b/gi;
+
+/** Bestaat een titel alleen uit formaatwoorden ("HC", "TPB", "HC/TPB", "Hardcover", "Volume 2")? */
+export function isFormatOnly(title) {
+  return !String(title || '').replace(FORMAT_WORDS, '').replace(/[\s/,&+\-–.:()]+/g, '');
+}
+
 /**
  * Zet Metron-issues (volumes) om naar gegevens voor een volume.
  * `item` mag een lijst-item of een detail zijn: { id, number, title?, image?, store_date?, cover_date?, reprints? }
@@ -776,8 +783,8 @@ export function volumeDataFromMetron(item, format) {
   // "Volume 1: Move Forward" → "Move Forward" (het deelnummer staat er al apart bij)
   const rawTitle = String(item.title || '').trim();
   let stripped = rawTitle.replace(/^vol(?:ume)?\.?\s*\d+(?:\.\d+)?\s*[:.\-–]\s*/i, '').trim();
-  // Alleen een formaat als naam ("HC", "TPB", "Volume 2") zegt niets: dan de naam van de reeks.
-  if (/^(hc|tpb|sc|gn|omnibus|hardcover|trade paperback|paperback|vol(ume)?\.?\s*\d+)(\s+(hc|tpb|sc))?$/i.test(stripped)) stripped = '';
+  // Alleen een formaat als naam ("HC", "TPB", "HC/TPB", "Hardcover", "Volume 2") zegt niets: dan de naam van de reeks.
+  if (stripped && isFormatOnly(stripped)) stripped = '';
   const onlyFormat = !stripped && rawTitle;
   const fromReeks = fallbackName
     ? format === 'issue'

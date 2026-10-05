@@ -117,6 +117,19 @@ test('seriesPhase: alleen series met een deel in bezit komen op de stapel', () =
   assert.equal(phase(), 'active');
 });
 
+test('volumeDataFromMetron: een titel die alleen een formaat is, wordt de naam van de reeks', () => {
+  const base = { id: 1, number: '1', issue: 'Cataclysm: The Ultimates Last Stand #1' };
+  for (const title of ['HC/TPB', 'HC', 'TPB', 'SC/TPB', 'Hardcover', 'Trade Paperback', 'Volume 1', 'HC & TPB']) {
+    assert.equal(M.volumeDataFromMetron({ ...base, title }, 'trade').title, 'Cataclysm: The Ultimates Last Stand', title);
+  }
+  // Echte titels blijven staan.
+  assert.equal(M.volumeDataFromMetron({ ...base, title: 'Volume 3: Gorilla Warfare' }, 'trade').title, 'Gorilla Warfare');
+  assert.equal(M.volumeDataFromMetron({ ...base, title: 'Marvels Omnibus' }, 'trade').title, 'Marvels Omnibus');
+  assert.equal(M.volumeDataFromMetron({ ...base, title: 'Hardcover Heroes' }, 'trade').title, 'Hardcover Heroes');
+  // Latere delen krijgen het deelnummer erbij.
+  assert.equal(M.volumeDataFromMetron({ ...base, number: '2', title: 'TPB' }, 'trade').title, 'Cataclysm: The Ultimates Last Stand Vol. 2');
+});
+
 test('pauze: lezen hervat de serie', () => {
   let { s, seriesId, ids } = flashFixture(2, 4);
   s = M.setPaused(s, seriesId, true, T);
