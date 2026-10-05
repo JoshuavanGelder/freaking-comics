@@ -6,7 +6,7 @@ import * as A from '../actions.js';
 import { shelfItem } from './home.js';
 import { isConnected } from '../api.js';
 
-const PHASE_ORDER = ['active', 'new', 'paused', 'done'];
+const PHASE_ORDER = ['active', 'new', 'paused', 'done', 'unowned'];
 
 export function kastView() {
   const state = getState();

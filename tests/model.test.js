@@ -95,6 +95,24 @@ test('seriesPhase en markNextRead', () => {
   assert.equal(M.markNextRead(s, seriesId, T).id, null);
 });
 
+test('seriesPhase: alleen series met een deel in bezit komen op de stapel', () => {
+  let { s, seriesId, ids } = flashFixture(0, 3);
+  const phase = () => M.seriesPhase(s, M.getSeries(s, seriesId));
+  // Niets in bezit: niet op de stapel.
+  assert.equal(phase(), 'unowned');
+  // Alleen op de verlanglijst: ook niet.
+  s = M.setOwnership(s, ids[0], 'wishlist', T);
+  assert.equal(phase(), 'unowned');
+  assert.equal(M.seriesByPhase(s, 'new').length, 0);
+  // Een deel in bezit: wel.
+  s = M.setOwnership(s, ids[1], 'owned', T);
+  assert.equal(phase(), 'new');
+  assert.equal(M.seriesByPhase(s, 'new').length, 1);
+  // Lezen gaat boven bezit.
+  s = M.setReadStatus(s, ids[1], 'reading', T);
+  assert.equal(phase(), 'active');
+});
+
 test('pauze: lezen hervat de serie', () => {
   let { s, seriesId, ids } = flashFixture(2, 4);
   s = M.setPaused(s, seriesId, true, T);

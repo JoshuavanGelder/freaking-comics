@@ -183,17 +183,22 @@ export function seriesStats(state, seriesId) {
   };
 }
 
-/** 'paused' | 'done' | 'active' | 'new' */
+/**
+ * 'paused' | 'done' | 'active' | 'new' | 'unowned'
+ * 'new' (op de stapel) is alleen voor series waar je nog niets van las maar wel een deel van hebt.
+ * Een serie die alleen op je verlanglijst staat (of nog nergens van in bezit is) is 'unowned'.
+ */
 export function seriesPhase(state, series) {
   if (series.paused) return 'paused';
   const vols = volumesOf(state, series.id);
   const main = routeVolumes(state, series.id);
   if (main.length && main.every((v) => v.readStatus === 'read')) return 'done';
   if (vols.some((v) => v.readStatus !== 'unread')) return 'active';
-  return 'new';
+  if (vols.some((v) => v.ownership === 'owned')) return 'new';
+  return 'unowned';
 }
 
-export const PHASE_LABELS = { paused: 'Op pauze', done: 'Uitgelezen', active: 'Bezig', new: 'Op de stapel' };
+export const PHASE_LABELS = { paused: 'Op pauze', done: 'Uitgelezen', active: 'Bezig', new: 'Op de stapel', unowned: 'Nog niet in bezit' };
 
 function byActivity(a, b) {
   return String(b.lastActivityAt).localeCompare(String(a.lastActivityAt));
