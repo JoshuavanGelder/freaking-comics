@@ -6,7 +6,7 @@ import * as A from '../actions.js';
 import { shelfItem } from './home.js';
 import { isConnected } from '../api.js';
 
-const PHASE_ORDER = ['active', 'new', 'paused', 'done', 'unowned'];
+const PHASE_ORDER = ['active', 'new', 'paused', 'done'];
 
 export function kastView() {
   const state = getState();
@@ -34,7 +34,7 @@ export function kastView() {
         h(
           'div',
           { class: 'stats' },
-          stat(state.series.length, state.series.length === 1 ? 'serie' : 'series'),
+          stat(M.shelfSeries(state).length, M.shelfSeries(state).length === 1 ? 'serie' : 'series'),
           stat(totals.read, 'gelezen'),
           stat(totals.owned, 'in bezit'),
         ),

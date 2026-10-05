@@ -186,7 +186,8 @@ export function seriesStats(state, seriesId) {
 /**
  * 'paused' | 'done' | 'active' | 'new' | 'unowned'
  * 'new' (op de stapel) is alleen voor series waar je nog niets van las maar wel een deel van hebt.
- * Een serie die alleen op je verlanglijst staat (of nog nergens van in bezit is) is 'unowned'.
+ * Een serie die alleen op je verlanglijst staat (of nog nergens van in bezit is) is 'unowned':
+ * die staat niet op de stapel en niet in Mijn kast, alleen op de Verlanglijst.
  */
 export function seriesPhase(state, series) {
   if (series.paused) return 'paused';
@@ -211,6 +212,11 @@ export function continueReading(state) {
 
 export function seriesByPhase(state, phase) {
   return state.series.filter((s) => seriesPhase(state, s) === phase).sort(byActivity);
+}
+
+/** Series voor "Mijn kast": alles behalve series die alleen op je verlanglijst staan (die zie je op de Verlanglijst). */
+export function shelfSeries(state) {
+  return state.series.filter((s) => seriesPhase(state, s) !== 'unowned');
 }
 
 export function wishlist(state) {

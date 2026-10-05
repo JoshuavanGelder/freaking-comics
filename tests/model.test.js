@@ -104,10 +104,14 @@ test('seriesPhase: alleen series met een deel in bezit komen op de stapel', () =
   s = M.setOwnership(s, ids[0], 'wishlist', T);
   assert.equal(phase(), 'unowned');
   assert.equal(M.seriesByPhase(s, 'new').length, 0);
+  // ... en ook niet in Mijn kast, wel op de verlanglijst.
+  assert.equal(M.shelfSeries(s).length, 0);
+  assert.equal(M.wishlist(s).length, 1);
   // Een deel in bezit: wel.
   s = M.setOwnership(s, ids[1], 'owned', T);
   assert.equal(phase(), 'new');
   assert.equal(M.seriesByPhase(s, 'new').length, 1);
+  assert.equal(M.shelfSeries(s).length, 1);
   // Lezen gaat boven bezit.
   s = M.setReadStatus(s, ids[1], 'reading', T);
   assert.equal(phase(), 'active');
