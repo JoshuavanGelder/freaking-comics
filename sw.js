@@ -1,6 +1,6 @@
 // Service worker: zorgt dat de app ook zonder internet opent.
 // Netwerk eerst (zodat je altijd de nieuwste versie krijgt), cache als terugval.
-const CACHE = 'freaking-comics-v9';
+const CACHE = 'freaking-comics-v10';
 const SHELL = [
   './',
   './index.html',
@@ -29,7 +29,7 @@ const SHELL = [
 ];
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
+  event.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL.map((u) => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (event) => {
@@ -51,7 +51,8 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin && !isFont && !isCover) return;
 
   event.respondWith(
-    fetch(req)
+    // 'no-cache': altijd eerst bij de server controleren of er iets nieuws is (GitHub Pages houdt bestanden anders 10 minuten vast).
+    (req.mode === 'navigate' ? fetch(req) : fetch(req, { cache: 'no-cache' })) // (een pagina-navigatie met extra opties zou een redirect breken)
       .then((res) => {
         if (res.ok || res.type === 'opaque') {
           const copy = res.clone();
